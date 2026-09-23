@@ -82,12 +82,14 @@ a safe moment); bookmark text was just the chapter heading (now the start of the
 
 - Offline drafts are keyed by the written form until they sync (handled, not re-keyed).
 - Email/password login to fetch the token: not pursued (the account signs in with Google; the bookmarklet covers it).
-- First tap on an untranslated page with GPT-5.4 mini: about 3.5 s (first 2-3 sentences go alone, the
-  rest in up to 3 parallel requests, whole page about 9-10 s). A tap waits for the in-flight request.
+- AI translation speed (GPT-5.4 mini, measured in desktop Chrome on the live site): first sentences on
+  screen 3.7 s after opening, the visible page about 5 s, the next page (prefetch) about 10 s. Words are
+  sent as compact "word|lemma|POS|glosses" strings, reasoning off, requests of about 350 characters,
+  up to 4 in parallel. A tap waits for the in-flight request instead of sending another.
 - Settings > Clear translation cache removes translations and word lookups (e.g. any Language Reactor
   decoys cached during the block) and resets "prepared".
-- Offline English runs in a Web Worker; its first lookup after launch takes several seconds while the
-  model starts, without freezing the page.
+- Offline English runs in a Web Worker: download about 40 s on a fast connection; its first lookup
+  after launch takes several seconds while the model starts, without freezing the page.
 - No iPhone test yet: first-tap audio, Home Screen install, storage persistence.
 
 ## Credentials used in development
