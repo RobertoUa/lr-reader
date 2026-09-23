@@ -12,7 +12,9 @@ const TRANSLATION_SCHEMA = obj({
     type: "array",
     items: obj({
       translation: { type: "string" },
-      words: { type: "array", items: obj({ word: { type: "string" }, lemma: { type: "string" }, pos: { type: "string", enum: UPOS }, glosses: { type: "array", items: { type: "string" } } }) },
+      // One compact string per word ("word|lemma|POS|gloss;gloss"): a third fewer output tokens than
+      // an object per word, and output length is what sets the wait.
+      words: { type: "array", items: { type: "string" } },
     }),
   },
 });
@@ -28,7 +30,7 @@ async function ask<T>(cfg: AiCfg, system: string, user: string, schema: object):
       headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: cfg.model,
-        reasoning_effort: "low",
+        reasoning_effort: "none",
         response_format: { type: "json_schema", json_schema: { name: "result", strict: true, schema } },
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
       }),
@@ -72,16 +74,21 @@ function tokens(text: string, words: { word: string; lemma: string; pos: string 
 export async function translate(texts: string[], lang: Lang, cfg: AiCfg, pace: Pace = (fn) => fn()): Promise<AiTranslated[]> {
   const system =
     `You analyze ${langName(lang.sl)} sentences for a learner whose language is ${langName(lang.tl)}. For each numbered sentence give ` +
-    `a natural ${langName(lang.tl)} translation, and every word in order as written (repeats included, no punctuation) with its ` +
-    `dictionary form (lowercase unless a proper noun), its Universal POS tag, and 1 to 3 short ${langName(lang.tl)} translations of the word as used there. ` +
-    `Return exactly one entry per sentence, in the same order.`;
+    `a natural ${langName(lang.tl)} translation, and every word in order as written (repeats included, no punctuation), each as one ` +
+    `string "word|lemma|POS|gloss;gloss": the dictionary form (lowercase unless a proper noun), the Universal POS tag, and 1 to 3 short ` +
+    `${langName(lang.tl)} translations of the word as used there (always in ${langName(lang.tl)}; for articles and particles a very short ` +
+    `note in ${langName(lang.tl)}). Return exactly one entry per sentence, in the same order.`;
   const user = texts.map((t, i) => `${i + 1}. ${t}`).join("\n");
-  const out = await pace(() => ask<{ sentences: { translation: string; words: { word: string; lemma: string; pos: string; glosses: string[] }[] }[] }>(cfg, system, user, TRANSLATION_SCHEMA));
+  const out = await pace(() => ask<{ sentences: { translation: string; words: string[] }[] }>(cfg, system, user, TRANSLATION_SCHEMA));
   if (out.sentences.length !== texts.length) throw new Error(`${cfg.provider === "openai" ? "ChatGPT" : "Claude"} returned ${out.sentences.length} translations for ${texts.length} sentences`);
   return out.sentences.map((s, i) => {
+    const words = s.words.map((line) => {
+      const [word = "", lemma = "", pos = "", g = ""] = line.split("|").map((x) => x.trim());
+      return { word, lemma: lemma || word.toLowerCase(), pos: UPOS.includes(pos) ? pos : "X", glosses: g.split(";").map((x) => x.trim()).filter(Boolean) };
+    });
     const glosses: Record<string, string[]> = {};
-    for (const w of s.words) glosses[w.word.toLowerCase()] ||= w.glosses;
-    return { tr: s.translation, nlp: tokens(texts[i], s.words), glosses };
+    for (const w of words) glosses[w.word.toLowerCase()] ||= w.glosses;
+    return { tr: s.translation, nlp: tokens(texts[i], words), glosses };
   });
 }
 

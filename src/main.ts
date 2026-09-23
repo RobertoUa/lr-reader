@@ -283,6 +283,7 @@ $("clear-translations").addEventListener("click", async () => {
   await Promise.all((await listBooks()).map((m) => putMeta({ ...m, prepared: 0, preparedChapters: [] })));
   trs = [];
   $("clear-status").textContent = `Removed ${n} cached entries.`;
+  if (!lib.hidden) showLibrary();
 });
 
 $("mt-download").addEventListener("click", async () => {
@@ -663,7 +664,7 @@ function translateBatch(texts: string[]): Promise<lr.Translated[]> {
 
 // AI sources answer in seconds per request, so the first 2-3 sentences on screen go alone and the rest
 // of the page follows in larger requests in parallel. Language Reactor takes 500-character batches.
-const FIRST_CHARS = 300, PARALLEL_AI = 3;
+const FIRST_CHARS = 200, PARALLEL_AI = 3;
 async function translatePage() {
   if (translating) return void (again = true);
   if (!loaded || !navigator.onLine || !spans.length) return;
