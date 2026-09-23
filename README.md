@@ -64,3 +64,10 @@ Speech:
 3. Settings > Voice: Language Reactor, or any Spanish iOS voice (works offline; download Enhanced or
    Premium voices in iOS Settings > Accessibility > Spoken Content > Voices). Speed 0.6x-1.2x.
    Test voice plays a sample.
+
+Examples, search, page numbers:
+
+1. Word sheet > Show examples: up to 5 other sentences from this book with the same form or its
+   dictionary form, with translations; tap one to jump there (the sentence flashes blue).
+2. Reader > search button: accent- and case-insensitive search across the book; tap a result to jump.
+3. Footer: chapter page (12/31), estimated book page (p. 57 of 412) and percent read.

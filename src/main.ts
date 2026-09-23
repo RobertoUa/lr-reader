@@ -412,6 +412,9 @@ async function openBook(id: string) {
     offsets.push(n);
     n += c.blocks.reduce((k, bl) => k + bl.sentences.length, 0);
   }
+  chapterChars = book.chapters.map((c) => c.blocks.reduce((n, b) => n + b.sentences.reduce((m, t) => m + t.length + 1, 0), 0));
+  measured.clear();
+  bookSents = book.chapters.flatMap((c, ci) => c.blocks.flatMap((b) => b.sentences).map((text, si) => ({ ci, si, text })));
   toc.innerHTML = book.chapters.map((c, i) => `<option value="${i}">${esc(c.title)}</option>`).join("");
   lib.hidden = true;
   reader.hidden = false;
@@ -445,6 +448,21 @@ function showChapter(i: number, sentence: number | "end" = 0) {
   });
 }
 
+// Only the open chapter is laid out, so the book-wide page number is estimated from characters per
+// page, averaged over the chapters laid out since the last layout change (font, size, rotation).
+let chapterChars: number[] = [];
+const measured = new Map<number, number>();
+function bookPage(): string {
+  measured.set(ch, pages());
+  let c = 0, p = 0;
+  for (const [i, n] of measured) (c += chapterChars[i]), (p += n);
+  const charsPerPage = c / p;
+  const before = chapterChars.slice(0, ch).reduce((a, b) => a + b, 0);
+  const total = chapterChars.reduce((a, b) => a + b, 0);
+  const n = Math.round(before / charsPerPage) + page + 1;
+  return ` \u00b7 p. ${n} of ${Math.max(n, Math.round(total / charsPerPage))}`;
+}
+
 // First sentence starting on this page or later.
 function firstFrom(p: number): number {
   let lo = 0, hi = spans.length;
@@ -468,7 +486,7 @@ function goto(p: number) {
   const s = anchor();
   meta.pos = { ch, s };
   meta.done = offsets[ch] + s;
-  where.textContent = `${book.chapters[ch].title} \u00b7 page ${page + 1}/${pages()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
+  where.textContent = `${book.chapters[ch].title} \u00b7 ${page + 1}/${pages()}${bookPage()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
   const { id, pos, done } = meta;
   getMeta(id).then((m) => m && putMeta({ ...m, pos, done }));
   translatePage();
@@ -531,6 +549,7 @@ function turn(dir: 1 | -1) {
 // Re-layout keeps the current sentence on screen.
 function relayout() {
   if (reader.hidden) return;
+  measured.clear();
   const s = meta.pos.s;
   viewport.scrollLeft = 0;
   goto(spans[s] ? pageOf(spans[s]) : 0);
@@ -585,8 +604,9 @@ async function openWord(w: HTMLElement) {
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button></div>
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Show examples</button></div>
     <div id="more"></div>
+    <div id="examples"></div>
     <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : ""}</b></div>`;
 }
 
@@ -616,6 +636,91 @@ function setStage(stage: lr.Stage) {
   renderSync();
   flushOutbox();
 }
+
+// ---- Examples and search: sentences from the whole book ----
+
+type Found = { ci: number; si: number; text: string };
+let bookSents: Found[] = [];
+const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const reEsc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const wordRe = (words: string[]) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(${words.map(reEsc).join("|")})(?![\\p{L}\\p{M}\\p{N}])`, "giu");
+
+function jumpTo(ci: number, si: number) {
+  closeSheet();
+  $("search-panel").hidden = true;
+  showChapter(ci, si);
+  const el = spans[si];
+  el?.classList.add("flash");
+  setTimeout(() => el?.classList.remove("flash"), 2500);
+}
+
+function foundList(hits: (Found & { tr?: string })[], mark: (text: string) => string) {
+  return hits
+    .map((h) => `<button class="found" data-ci="${h.ci}" data-si="${h.si}"><span>${mark(h.text)}</span>${h.tr ? `<i>${esc(h.tr)}</i>` : ""}<small>${esc(book.chapters[h.ci].title)}</small></button>`)
+    .join("");
+}
+
+document.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("button.found");
+  if (b) jumpTo(Number(b.dataset.ci), Number(b.dataset.si));
+});
+
+// Up to 5 other sentences with the same form or dictionary form, going forward from here.
+async function examples() {
+  const w = current;
+  if (!w) return;
+  const box = $("examples");
+  const { lemma } = lemmaFor(w);
+  const words = [...new Set([w.textContent!.toLowerCase(), lemma])];
+  const re = wordRe(words);
+  const here = offsets[ch] + Number((w.parentElement as HTMLElement).dataset.s);
+  const seen = new Set([sents[Number((w.parentElement as HTMLElement).dataset.s)]]);
+  const hits: (Found & { tr?: string })[] = [];
+  for (let k = 1; k < bookSents.length && hits.length < 5; k++) {
+    const x = bookSents[(here + k) % bookSents.length];
+    re.lastIndex = 0;
+    if (!seen.has(x.text) && re.test(x.text)) hits.push(x), seen.add(x.text);
+  }
+  const mark = (t: string) => esc(t).replace(wordRe(words.map(esc)), "<b>$1</b>");
+  if (!hits.length) return void (box.innerHTML = `<div class="sub">No other sentences with "${esc(words.join('" or "'))}" in this book.</div>`);
+  const cachedTrs = await cacheGetMany<lr.Translated>(hits.map((h) => trKey(h.text)));
+  hits.forEach((h, i) => (h.tr = cachedTrs[i]?.tr));
+  box.innerHTML = foundList(hits, mark);
+  const missing = hits.filter((h) => !h.tr);
+  if (!missing.length || !navigator.onLine) return;
+  try {
+    const res = await lr.translate(missing.map((h) => h.text), lang());
+    await Promise.all(res.map((r, i) => cacheSet(trKey(missing[i].text), r)));
+    missing.forEach((h, i) => (h.tr = res[i].tr));
+    if (current === w) box.innerHTML = foundList(hits, mark);
+  } catch (e) {
+    box.insertAdjacentHTML("beforeend", `<div class="err">${esc(msg(e))}</div>`);
+  }
+}
+
+const searchPanel = $("search-panel");
+let searchTimer = 0;
+$("search").addEventListener("click", () => {
+  const open = searchPanel.hidden;
+  closeSheet();
+  searchPanel.hidden = !open;
+  if (open) ($("search-input") as HTMLInputElement).focus();
+});
+$("search-input").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    const q = fold(($("search-input") as HTMLInputElement).value.trim());
+    const box = $("search-results");
+    if (q.length < 2) return void (box.innerHTML = "");
+    // Accent- and case-insensitive; folding keeps lengths for precomposed text, so offsets map back.
+    const hits = bookSents.filter((x) => fold(x.text).includes(q));
+    const mark = (t: string) => {
+      const f = fold(t), i = f.indexOf(q);
+      return f.length === t.length && i >= 0 ? esc(t.slice(0, i)) + `<b>${esc(t.slice(i, i + q.length))}</b>` + esc(t.slice(i + q.length)) : esc(t);
+    };
+    box.innerHTML = `<div class="sub">${hits.length} sentence${hits.length === 1 ? "" : "s"}${hits.length > 100 ? ", first 100 shown" : ""}</div>` + foundList(hits.slice(0, 100), mark);
+  }, 250);
+});
 
 async function more() {
   const w = current;
@@ -711,6 +816,7 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
+  if (b.dataset.act === "examples") examples();
 });
 
 // ---- Input ----
@@ -755,7 +861,7 @@ viewport.addEventListener("pointerup", (e) => {
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return turn(dx < 0 ? 1 : -1);
   const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
   if (w) return w === current ? closeSheet() : void openWord(w);
-  if (!sheet.hidden || !lookPanel.hidden) return closeSheet();
+  if (!sheet.hidden || !lookPanel.hidden || !searchPanel.hidden) return closeSheet(), void (searchPanel.hidden = true);
   const x = e.clientX / W();
   if (x < 0.3) turn(-1);
   else if (x > 0.7) turn(1);
