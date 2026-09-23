@@ -56,3 +56,6 @@ export async function cached<T>(k: string, fetcher: () => Promise<T>): Promise<T
 export const trKey = (text: string, l: { sl: string; tl: string }) => `tr2|${l.sl}|${l.tl}|${text}`;
 export const hdKey = (form: string, t: { lemma?: { text: string }; pos?: string } | undefined, l: { sl: string; tl: string }) =>
   `hd|${l.sl}|${l.tl}|${form.toLowerCase()}|${t?.lemma?.text || ""}|${t?.pos || ""}`;
+// Preparation looks up one form per dictionary form; offline, other forms fall back to that entry.
+export const hdLemmaKey = (t: { lemma?: { text: string }; pos?: string; form: { text: string } }, l: { sl: string; tl: string }) =>
+  `hdl|${l.sl}|${l.tl}|${(t.lemma?.text || t.form.text).toLowerCase()}|${t.pos || ""}`;

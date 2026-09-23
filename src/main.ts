@@ -1,6 +1,6 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
-import { addBook, cached, hdKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
 import { prepareBook, type Progress } from "./prepare";
@@ -22,7 +22,7 @@ const pref = (k: string, v?: string) => {
 };
 
 type Settings = { email: string; token: string; sl: string; tl: string; rate: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "2", ...JSON.parse(pref("settings") || "{}") });
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -59,7 +59,7 @@ function renderSync() {
       : outbox.length
         ? `\u00b7 ${outbox.length} to sync`
         : "";
-  $("sync-detail").textContent = outbox.length ? `Outbox: ${outbox.map((e) => `${e.op} ${e.item?.itemType === "PHRASE" ? `"${e.item.context.phrase.subtitles[1]}"` : lemmaOf(e.key)}${e.error ? ` (${e.error}, ${e.attempts} tries)` : ""}`).join("; ")}` : "Outbox empty.";
+  $("sync-detail").textContent = outbox.length ? `Outbox: ${outbox.map((e) => `${e.op} ${e.item?.itemType === "PHRASE" ? `"${e.item.phrase ?? e.item.context.phrase.subtitles[1]}"` : lemmaOf(e.key)}${e.error ? ` (${e.error}, ${e.attempts} tries)` : ""}`).join("; ")}` : "Outbox empty.";
 }
 
 async function loadWords() {
@@ -88,7 +88,7 @@ async function saveWithFallback(a: lr.Auth, item: any) {
   try {
     await lr.saveItem(a, item);
   } catch (e) {
-    if (item.source !== "USER_TEXT" || /unreachable/.test(msg(e))) throw e;
+    if (item.source !== "USER_TEXT" || /unreachable|TOKEN_ERROR|RATE_LIMIT/.test(msg(e))) throw e;
     const ref = chatRef(item.context.phrase.reference.subtitleIndex);
     await lr.saveItem(a, { ...item, source: "CHAT", context: { ...item.context, phrase: { ...item.context.phrase, reference: ref } } });
     pref("ref", "CHAT");
@@ -103,8 +103,9 @@ async function flushOutbox() {
   const sent = outbox;
   const left = await flush(sent, async (e) => {
     if (e.op === "save") {
-      await saveWithFallback(a, e.item);
-      if (e.item.itemType === "WORD") synced[lemmaOf(e.key)] = e.item.learningStage;
+      const item = e.item.draft ? await resolveDraft(e.item) : e.item;
+      await saveWithFallback(a, item);
+      if (item.itemType === "WORD") synced[lemmaOf(item.key)] = item.learningStage;
     } else {
       await lr.removeItem(a, e.key);
       delete synced[lemmaOf(e.key)];
@@ -121,6 +122,25 @@ async function flushOutbox() {
 }
 
 addEventListener("online", loadWords);
+// iOS does not reliably fire "online" for a Home Screen app coming back, so also retry on return.
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && outbox.length && flushOutbox());
+
+// A mark made before its sentence was translated (offline) is kept as a draft and completed here:
+// the server needs the sentence's NLP tokens, and the word's dictionary form comes from them.
+type Draft = { draft: true; itemType: "WORD" | "PHRASE"; learningStage: lr.Stage; offset?: number; phrase?: string; text: string; prev: string | null; next: string | null; ref: lr.Ref };
+
+async function resolveDraft(d: Draft) {
+  const tr = await cached(trKey(d.text), async () => (await lr.translate([d.text], lang()))[0]);
+  const ctx: lr.Context = { ...d, tr: tr.tr, nlp: tr.nlp };
+  if (d.itemType === "PHRASE") {
+    const p = await cached(trKey(d.phrase!), async () => (await lr.translate([d.phrase!], lang()))[0]);
+    return lr.phraseItem(d.phrase!, p.tr, p.nlp, ctx, lang());
+  }
+  const i = tokenAt(tr.nlp, d.text, d.offset!);
+  if (i < 0) throw new Error(`could not find the word in "${d.text}"`);
+  const lemma = (tr.nlp[i].lemma?.text || tr.nlp[i].form.text).toLowerCase();
+  return lr.wordItem(lemma, d.learningStage, i, ctx, lang());
+}
 addEventListener("offline", renderSync);
 
 // ---- Settings ----
@@ -137,7 +157,7 @@ $("open-settings").addEventListener("click", async () => {
 settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "2" }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4" }));
   loadWords();
 });
 
@@ -194,7 +214,7 @@ async function togglePrepare(id: string) {
   say(`Preparing "${m.title}" for offline. Keep the app open; it resumes where it stopped.`);
   let chapter = 0;
   try {
-    await prepareBook(b, lang(), Number(settings().rate) || 2, job.ctl.signal, (p) => {
+    await prepareBook(b, lang(), Number(settings().rate) || 4, Math.min(m.pos.ch, b.chapters.length - 1), job.ctl.signal, (p) => {
       job.text = prepText(p);
       if (job.line) job.line.textContent = job.text;
       if (p.chapter !== chapter) {
@@ -466,7 +486,9 @@ async function openWord(w: HTMLElement) {
     const t = token;
     entries = await cached(hdKey(form, t, lang()), () => lr.hoverDict(form, t, lang()));
   } catch (e) {
-    err ||= `Dictionary: ${msg(e)}`;
+    const byLemma = token && (await cacheGet<string[]>(hdLemmaKey(token, lang())));
+    if (byLemma) entries = byLemma;
+    else err ||= `Dictionary: ${msg(e)}`;
   }
   if (current !== w) return;
   const stage = stageOf(lemma);
@@ -480,6 +502,12 @@ async function openWord(w: HTMLElement) {
     <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : ""}</b></div>`;
 }
 
+function where0(si: number) {
+  const index0 = offsets[ch] + si;
+  const ref = pref("ref") === "CHAT" ? chatRef(index0) : lr.bookRef(meta.id, meta.title, settings().sl, index0);
+  return { text: sents[si], prev: sents[si - 1] ?? null, next: sents[si + 1] ?? null, ref };
+}
+
 function setStage(stage: lr.Stage) {
   const w = current;
   if (!w) return;
@@ -491,14 +519,8 @@ function setStage(stage: lr.Stage) {
     outbox = lemma in synced ? enqueue(outbox, "remove", key) : drop(outbox, key);
   } else {
     const tr = trs[si];
-    if (!tr || index < 0) {
-      sheet.querySelector(".tr")!.insertAdjacentHTML("afterend", `<div class="err">This sentence has no translation yet; connect once to translate it.</div>`);
-      return;
-    }
-    const index0 = offsets[ch] + si;
-    const ref = pref("ref") === "CHAT" ? chatRef(index0) : lr.bookRef(meta.id, meta.title, settings().sl, index0);
-    const context: lr.Context = { text: sents[si], tr: tr.tr, nlp: tr.nlp, prev: sents[si - 1] ?? null, next: sents[si + 1] ?? null, ref };
-    outbox = enqueue(outbox, "save", key, lr.wordItem(lemma, next, index, context, lang()));
+    const draft: Draft = { draft: true, itemType: "WORD", learningStage: next, offset: Number(w.dataset.o), ...where0(si) };
+    outbox = enqueue(outbox, "save", key, tr && index >= 0 ? lr.wordItem(lemma, next, index, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft);
   }
   cacheSet("outbox", outbox);
   sheet.querySelectorAll<HTMLElement>("[data-stage]").forEach((b) => b.classList.toggle("on", b.dataset.stage === next));
@@ -567,10 +589,10 @@ async function openPhrase() {
     tr = await cached(trKey(text), async () => (await lr.translate([text], lang()))[0]);
     await ensureTr(si);
   } catch (e) {
-    err = msg(e);
+    err = `${msg(e)}. Save phrase still works; it is sent when you are back online.`;
   }
   if (selected !== sel) return;
-  if (tr) phrase = { text, tr: tr.tr, nlp: tr.nlp, si };
+  phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
   const key = `PHRASE-YT|${sl}|${lr.md5(text).slice(0, 16)}`;
   const queued = outbox.some((x) => x.key === key);
   sheet.innerHTML = `<h3>${esc(text)}</h3>
@@ -581,17 +603,11 @@ async function openPhrase() {
 }
 
 function savePhrase(b: HTMLElement) {
-  const si = phrase?.si ?? -1;
-  const tr = trs[si];
-  if (!phrase || !tr) {
-    sheet.insertAdjacentHTML("beforeend", `<div class="err">No translation for this phrase yet; connect once to translate it.</div>`);
-    return;
-  }
-  const index0 = offsets[ch] + si;
-  const ref = pref("ref") === "CHAT" ? chatRef(index0) : lr.bookRef(meta.id, meta.title, settings().sl, index0);
-  const context: lr.Context = { text: sents[si], tr: tr.tr, nlp: tr.nlp, prev: sents[si - 1] ?? null, next: sents[si + 1] ?? null, ref };
-  const item = lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, context, lang());
-  outbox = enqueue(outbox, "save", item.key, item);
+  if (!phrase) return;
+  const tr = trs[phrase.si];
+  const draft: Draft = { draft: true, itemType: "PHRASE", learningStage: "LEARNING", phrase: phrase.text, ...where0(phrase.si) };
+  const item = tr && phrase.nlp.length ? lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft;
+  outbox = enqueue(outbox, "save", `PHRASE-YT|${settings().sl}|${lr.md5(phrase.text).slice(0, 16)}`, item);
   cacheSet("outbox", outbox);
   b.classList.add("on");
   b.textContent = "Saved";

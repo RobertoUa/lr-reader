@@ -41,7 +41,10 @@ Phrases and offline preparation:
    sheet shows the exact text with punctuation and its translation. Save phrase: appears on Saved
    Items as one phrase. Play reads it.
 2. Library > Prepare: progress line counts chapters, sentences and words; Pause stops at once and
-   Prepare resumes where it stopped (also after closing the app). At the default 2 requests/second
-   a 3,000-sentence book takes about 45 minutes; Language Reactor rate-limits around 10/s.
+   Prepare resumes where it stopped (also after closing the app). It starts with the chapter being
+   read and looks words up once per dictionary form. At the default 4 requests/second a 3,000-sentence
+   book takes about 15 minutes; Language Reactor rate-limits a little above 5/s.
+4. Mark a word and save a phrase in airplane mode, even in a chapter never opened online: footer
+   shows "2 to sync". Airplane mode off (or reopen the app): both sync.
 3. After it reaches 100%, airplane mode: any word in the book opens with its translation and the
    sentence translation. Play works only for words already played online.

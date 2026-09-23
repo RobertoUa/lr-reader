@@ -24,6 +24,7 @@ async function call(url: string, body?: unknown): Promise<any> {
     throw new Error(`Language Reactor unreachable: ${(e as Error).message}`);
   }
   const j = await r.json().catch(() => null);
+  if (j?.error === "TOKEN_ERROR") throw new Error("Language Reactor rejected the token (TOKEN_ERROR); update it in Settings");
   if (!j || j.status !== "success") throw new Error(`Language Reactor: ${j?.error || j?.status || `HTTP ${r.status}`}`);
   return j.data;
 }
@@ -146,7 +147,8 @@ export function wordItem(lemma: string, stage: Stage, wordIndex: number, c: Cont
     tags: [],
     wordTranslationsArr: null,
     wordType: t?.lemma ? "lemma" : "form",
-    word: { text: lemma },
+    // The server checks this against the token's lemma exactly as it spells it ("Espa\u00f1ol").
+    word: { text: t?.lemma?.text || lemma },
     freqRank: typeof freq === "number" ? freq : null,
     context: { phrase: phrase(c), wordIndex },
     audio: null,
