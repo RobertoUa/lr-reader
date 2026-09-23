@@ -80,11 +80,14 @@ a safe moment); bookmark text was just the chapter heading (now the start of the
 
 ## Known limits and open items
 
-- Offline English translation runs on the main thread (a short freeze on first use on iPhone).
 - Offline drafts are keyed by the written form until they sync (handled, not re-keyed).
 - Email/password login to fetch the token: not pursued (the account signs in with Google; the bookmarklet covers it).
-- First AI translation of a page takes about 10 s with GPT-5.4 mini (one request for the whole page);
-  a tap during that wait makes its own request for the sentence.
+- First tap on an untranslated page with GPT-5.4 mini: about 3.5 s (first 2-3 sentences go alone, the
+  rest in up to 3 parallel requests, whole page about 9-10 s). A tap waits for the in-flight request.
+- Settings > Clear translation cache removes translations and word lookups (e.g. any Language Reactor
+  decoys cached during the block) and resets "prepared".
+- Offline English runs in a Web Worker; its first lookup after launch takes several seconds while the
+  model starts, without freezing the page.
 - No iPhone test yet: first-tap audio, Home Screen install, storage persistence.
 
 ## Credentials used in development

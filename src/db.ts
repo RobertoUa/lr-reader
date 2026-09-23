@@ -1,4 +1,4 @@
-import { createStore, get, getMany, set, del, delMany, values } from "idb-keyval";
+import { createStore, get, getMany, set, del, delMany, keys, values } from "idb-keyval";
 import type { Book } from "./epub";
 
 export type Pos = { ch: number; s: number };
@@ -68,3 +68,11 @@ export const hdKey = (form: string, t: { lemma?: { text: string }; pos?: string 
 // Preparation looks up one form per dictionary form; offline, other forms fall back to that entry.
 export const hdLemmaKey = (t: { lemma?: { text: string }; pos?: string; form: { text: string } }, l: { sl: string; tl: string }) =>
   `hdl|${l.sl}|${l.tl}|${(t.lemma?.text || t.form.text).toLowerCase()}|${t.pos || ""}`;
+
+// Translations, word glosses, dictionary entries and offline English results; summaries, the saved-word
+// list and the outbox stay.
+export async function clearTranslations(): Promise<number> {
+  const drop = (await keys<string>(cache)).filter((k) => /^(tr2|tr3|trx|hd|hdl|fd|mt)\|/.test(String(k)));
+  await delMany(drop, cache);
+  return drop.length;
+}

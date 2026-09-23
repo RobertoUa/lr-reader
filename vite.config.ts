@@ -4,6 +4,8 @@ import { VitePWA } from "vite-plugin-pwa";
 // Relative base so the same build works at a domain root or a GitHub Pages subpath.
 export default defineConfig({
   base: "./",
+  // The offline translation worker imports transformers.js, which splits into chunks.
+  worker: { format: "es" },
   plugins: [
     VitePWA({
       registerType: "autoUpdate",

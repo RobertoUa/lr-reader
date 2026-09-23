@@ -106,3 +106,11 @@ Translation source:
    each. Open an unprepared chapter: the page translates, words highlight by dictionary form, a tapped
    word shows glosses, More shows a dictionary entry; marking a word still saves to Language Reactor.
 2. Without the chosen key: footer shows "Translations are set to ...: add its API key in Settings".
+
+Speed and cache:
+
+1. With ChatGPT/Claude translations, open an untranslated chapter and tap a word at once: its sheet
+   fills in about 3-4 s (the first 2-3 sentences go in their own request; the rest follows in parallel).
+2. Settings > Clear translation cache: cached translations and word lookups are removed, books show
+   "prepared 0%"; summaries, saved words and pending marks stay.
+3. Offline English runs in a background worker: the page stays responsive while the model loads.

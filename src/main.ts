@@ -1,6 +1,6 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
-import { type Bookmark, addBook, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { type Bookmark, addBook, clearTranslations, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
@@ -277,6 +277,14 @@ function mtStatus() {
       ? "Downloaded: unprepared sentences get an English translation offline."
       : "Not downloaded. About 110 MB, once, over Wi-Fi.";
 }
+$("clear-translations").addEventListener("click", async () => {
+  if (!confirm("Remove all cached translations and word lookups? Prepared chapters will need preparing again.")) return;
+  const n = await clearTranslations();
+  await Promise.all((await listBooks()).map((m) => putMeta({ ...m, prepared: 0, preparedChapters: [] })));
+  trs = [];
+  $("clear-status").textContent = `Removed ${n} cached entries.`;
+});
+
 $("mt-download").addEventListener("click", async () => {
   const b = $("mt-download") as HTMLButtonElement;
   b.disabled = true;
@@ -636,28 +644,57 @@ function goto(p: number) {
 let translating = false;
 let again = false;
 let loaded = false;
+// Sentences being translated right now, so a tap on one waits for that request instead of sending another.
+const pendingTr = new Map<string, Promise<lr.Translated>>();
+function translateBatch(texts: string[]): Promise<lr.Translated[]> {
+  const p = S.translate(source(), texts, lang()).then(async (res) => {
+    await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k]), r)));
+    return res;
+  });
+  texts.forEach((t, k) => {
+    const one = p.then((r) => r[k]);
+    // Whoever awaits it still sees a failure; this only stops an unawaited one being reported as unhandled.
+    one.catch(() => {});
+    pendingTr.set(t, one);
+  });
+  p.finally(() => texts.forEach((t) => pendingTr.delete(t))).catch(() => {});
+  return p;
+}
+
+// AI sources answer in seconds per request, so the first 2-3 sentences on screen go alone and the rest
+// of the page follows in larger requests in parallel. Language Reactor takes 500-character batches.
+const FIRST_CHARS = 300, PARALLEL_AI = 3;
 async function translatePage() {
   if (translating) return void (again = true);
   if (!loaded || !navigator.onLine || !spans.length) return;
   const want: number[] = [];
-  for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page + 1; i++) if (!trs[i]) want.push(i);
+  for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page + 1; i++) if (!trs[i] && !pendingTr.has(sents[i])) want.push(i);
   if (!want.length) return;
   translating = true;
-  const shown = view;
-  try {
-    while (want.length) {
-      const batch: number[] = [];
-      let len = 0;
-      const max = source().batchChars;
-      while (want.length && (len += sents[want[0]].length + 1) <= max) batch.push(want.shift()!);
-      if (!batch.length) batch.push(want.shift()!);
-      const texts = batch.map((i) => sents[i]);
-      const res = await S.translate(source(), texts, lang());
-      await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k]), r)));
-      if (view !== shown) break;
-      res.forEach((r, k) => (trs[batch[k]] = r));
-    }
+  const shown = view, src = source();
+  const batches: number[][] = [];
+  let len = 0;
+  for (const i of want) {
+    const cap = src.ai && batches.length <= 1 ? FIRST_CHARS : src.batchChars;
+    if (!batches.length || (len + sents[i].length + 1 > cap && batches[batches.length - 1].length)) batches.push([]), (len = 0);
+    batches[batches.length - 1].push(i);
+    len += sents[i].length + 1;
+  }
+  const run = async (batch: number[]) => {
+    const res = await translateBatch(batch.map((i) => sents[i]));
+    if (view !== shown) return;
+    res.forEach((r, k) => (trs[batch[k]] = r));
     mark();
+  };
+  try {
+    if (!src.ai) for (const b of batches) await run(b);
+    else {
+      await run(batches[0]);
+      let next = 1;
+      await Promise.all(Array.from({ length: PARALLEL_AI }, async () => {
+        while (next < batches.length) await run(batches[next++]);
+      }));
+    }
   } catch (e) {
     where.textContent += ` \u00b7 translate: ${msg(e)}`;
   } finally {
@@ -669,7 +706,7 @@ async function translatePage() {
   }
 }
 
-const translateCached = (text: string) => cached(trKey(text), async () => (await S.translate(source(), [text], lang()))[0]);
+const translateCached = (text: string) => pendingTr.get(text) ?? cached(trKey(text), async () => (await translateBatch([text]))[0]);
 
 async function ensureTr(si: number): Promise<lr.Translated> {
   if (trs[si]) return trs[si]!;

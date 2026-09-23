@@ -1,40 +1,49 @@
-// Offline Spanish->English translation with a small model run in the browser, for sentences that were
-// not prepared. There is no good es->uk model that runs here (the one tried answered in Russian).
-// The onnxruntime files are served from this app: by default transformers.js imports them from a CDN,
-// which would run third-party code next to the API keys, and would not be cached for offline use.
+// Offline Spanish->English translation with a small model run in the browser (in a Web Worker), for
+// sentences that were not prepared. There is no good es->uk model that runs here (the one tried answered
+// in Russian). The onnxruntime files are served from this app: by default transformers.js imports them
+// from a CDN, which would run third-party code next to the API keys, and would not be cached offline.
 import ortAsyncMjs from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
 import ortAsyncWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 import ortMjs from "onnxruntime-web/ort-wasm-simd-threaded.mjs?url";
 import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url";
 
-const MODEL = "Xenova/opus-mt-es-en";
-type Translate = (text: string) => Promise<{ translation_text: string }[]>;
-let pipe: Promise<Translate> | null = null;
-
 export const supported = (sl: string) => sl === "es";
 
-export function load(onProgress?: (pct: number) => void): Promise<Translate> {
-  pipe ||= (async () => {
-    const { pipeline, env } = await import("@huggingface/transformers");
-    // Same choice transformers.js makes: Safari before 26 without WebGPU needs the non-asyncify build.
-    const oldSafari = Number(/Version\/(\d+).*Safari/.exec(navigator.userAgent)?.[1] ?? 99) < 26 && !("gpu" in navigator);
-    env.backends.onnx.wasm!.wasmPaths = oldSafari ? { mjs: ortMjs, wasm: ortWasm } : { mjs: ortAsyncMjs, wasm: ortAsyncWasm };
-    const loaded: Record<string, number> = {}, total: Record<string, number> = {};
-    return (await pipeline("translation", MODEL, {
-      dtype: "q8",
-      progress_callback: (p: any) => {
-        if (p.status !== "progress" || !p.total) return;
-        loaded[p.file] = p.loaded;
-        total[p.file] = p.total;
-        const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
-        onProgress?.(Math.floor((100 * sum(loaded)) / sum(total)));
-      },
-    })) as unknown as Translate;
-  })();
-  pipe.catch(() => (pipe = null));
-  return pipe;
+type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; onProgress?: (pct: number) => void };
+const pending = new Map<number, Pending>();
+let worker: Worker | null = null, seq = 0;
+
+function call(msg: object, onProgress?: (pct: number) => void): Promise<any> {
+  if (!worker) {
+    worker = new Worker(new URL("./mt.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e) => {
+      const { id, progress, done, text, error } = e.data, p = pending.get(id);
+      if (!p) return;
+      if (progress !== undefined) return p.onProgress?.(progress);
+      pending.delete(id);
+      if (error) p.reject(new Error(error));
+      else if (done) p.resolve(text);
+    };
+  }
+  const id = ++seq;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject, onProgress });
+    worker!.postMessage({ ...msg, id });
+  });
+}
+
+let loading: Promise<void> | null = null;
+export function load(onProgress?: (pct: number) => void): Promise<void> {
+  // Same choice transformers.js makes: Safari before 26 without WebGPU needs the non-asyncify build.
+  const oldSafari = Number(/Version\/(\d+).*Safari/.exec(navigator.userAgent)?.[1] ?? 99) < 26 && !("gpu" in navigator);
+  const abs = (u: string) => new URL(u, location.href).href;
+  const paths = oldSafari ? { mjs: abs(ortMjs), wasm: abs(ortWasm) } : { mjs: abs(ortAsyncMjs), wasm: abs(ortAsyncWasm) };
+  loading ||= call({ type: "load", paths }, onProgress);
+  loading.catch(() => (loading = null));
+  return loading;
 }
 
 export async function toEnglish(text: string): Promise<string> {
-  return (await (await load())(text))[0].translation_text;
+  await load();
+  return call({ type: "translate", text });
 }

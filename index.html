@@ -95,6 +95,8 @@
     <label>Claude model<select name="claudeModel"></select></label>
     <label>OpenAI API key (stays on this device)<input name="openaiKey" type="password" autocomplete="off"></label>
     <label>ChatGPT model<select name="openaiModel"></select></label>
+    <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="clear-translations">Clear translation cache</button></div>
+    <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
     <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>
     <p id="mt-status" class="sub"></p>
     <label>Voice<select name="voice"></select></label>
