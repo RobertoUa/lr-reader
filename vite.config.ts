@@ -9,7 +9,19 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["apple-touch-icon.png"],
       // pdf.js ships its worker as .mjs; cache it too so PDF import works offline.
-      workbox: { globPatterns: ["**/*.{js,mjs,css,html,png,webmanifest}"], maximumFileSizeToCacheInBytes: 3 * 1024 * 1024 },
+      workbox: {
+        globPatterns: ["**/*.{js,mjs,css,html,png,webmanifest}"],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // The offline translation runtime (27 MB .wasm) is cached on first use rather than precached for
+        // everyone; transformers.js caches the model files itself.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith(".wasm"),
+            handler: "CacheFirst",
+            options: { cacheName: "onnxruntime", cacheableResponse: { statuses: [200] } },
+          },
+        ],
+      },
       manifest: {
         name: "LR Reader",
         short_name: "LR Reader",

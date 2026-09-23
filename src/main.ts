@@ -6,6 +6,7 @@ import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
 import * as Sum from "./summary";
+import * as MT from "./mt";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -25,8 +26,8 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; aiProvider: string; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, aiProvider: "claude", claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(pref("settings") || "{}") });
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string };
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -154,9 +155,10 @@ $("open-settings").addEventListener("click", async () => {
   const opts = (m: Record<string, string>) => Object.entries(m).map(([id, n]) => `<option value="${id}">${n}</option>`).join("");
   ($("settings").querySelector("[name=claudeModel]") as HTMLSelectElement).innerHTML = opts(Sum.CLAUDE_MODELS);
   ($("settings").querySelector("[name=openaiModel]") as HTMLSelectElement).innerHTML = opts(Sum.OPENAI_MODELS);
-  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "aiProvider", "claudeKey", "claudeModel", "openaiKey", "openaiModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "claudeKey", "claudeModel", "openaiKey", "openaiModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
   (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked = s.autoSay;
   fillVoices();
+  mtStatus();
   const est = await navigator.storage?.estimate?.();
   const persisted = await navigator.storage?.persisted?.();
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
@@ -167,7 +169,7 @@ settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
   const autoSay = (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked;
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, aiProvider: v("aiProvider") || "claude", claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5", openaiKey: v("openaiKey"), openaiModel: v("openaiModel") || "gpt-5.5" }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5", openaiKey: v("openaiKey"), openaiModel: v("openaiModel") || "gpt-5.5" }));
   loadWords();
 });
 
@@ -231,6 +233,30 @@ function speak(text: string, onError: (m: string) => void, voice = systemVoice()
     })
     .catch((e) => onError(`Play: ${msg(e)}`));
 }
+
+function mtStatus() {
+  $("mt-status").textContent = !MT.supported(settings().sl)
+    ? "Only for Spanish books."
+    : pref("mtReady") === "1"
+      ? "Downloaded: unprepared sentences get an English translation offline."
+      : "Not downloaded. About 110 MB, once, over Wi-Fi.";
+}
+$("mt-download").addEventListener("click", async () => {
+  const b = $("mt-download") as HTMLButtonElement;
+  b.disabled = true;
+  try {
+    await MT.load((pct) => ($("mt-status").textContent = `Downloading... ${pct}%`));
+    $("mt-status").textContent = "Checking...";
+    const test = await MT.toEnglish("El gato duerme en la casa.");
+    pref("mtReady", "1");
+    mtStatus();
+    $("mt-status").textContent += ` Test: "${test}"`;
+  } catch (e) {
+    $("mt-status").textContent = `Download failed: ${msg(e)}`;
+  } finally {
+    b.disabled = false;
+  }
+});
 
 $("copy-bookmarklet").addEventListener("click", () => {
   const code = "javascript:" + bookmarkletSrc.replace(/^\s*\/\/.*$/gm, "").replace(/\s*\n\s*/g, " ").trim();
@@ -352,7 +378,7 @@ async function startPrepare(id: string, chapters: number[], withSummaries = fals
       try {
         job.text += ` \u00b7 summarizing ${b.chapters[ci].title}...`;
         if (job.line) job.line.textContent = job.text;
-        await summaryFor(b, ci, pref("sumLang") || settings().tl);
+        await summaryFor(b, ci, pref("sumLang") || settings().tl, defaultProvider());
       } catch (e) {
         say(`Summary of "${b.chapters[ci].title}" failed: ${msg(e)}`, true);
       }
@@ -456,6 +482,8 @@ function mark() {
 }
 
 async function openBook(id: string) {
+  returnTo = null;
+  $("return").hidden = true;
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
   if (!b || !m) return say("Book not found in storage.", true);
   book = b;
@@ -653,16 +681,30 @@ async function openWord(w: HTMLElement) {
     else err ||= `Dictionary: ${msg(e)}`;
   }
   if (current !== w) return;
+  let enSent = "", offlineNote = "";
+  if (mtOn() && (!tr || !entries.length)) {
+    try {
+      const [ew, es] = await Promise.all([entries.length ? "" : offlineEn(form), tr ? "" : offlineEn(sents[si])]);
+      if (ew) entries = [ew];
+      enSent = es;
+      offlineNote = "Offline: English from the on-device model.";
+      err = "";
+    } catch (e) {
+      err ||= `Offline translation: ${msg(e)}`;
+    }
+    if (current !== w) return;
+  }
   const stage = stageOf(lemma);
   const btn = (s: string, label: string) => `<button data-stage="${s}" class="${stage === s ? "on" : ""}">${label}</button>`;
   sheet.innerHTML = `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
+    ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
     <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Show examples</button></div>
     <div id="more"></div>
     <div id="examples"></div>
-    <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : ""}</b></div>`;
+    <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : esc(enSent)}</b></div>`;
 }
 
 function where0(si: number) {
@@ -700,9 +742,13 @@ const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCas
 const reEsc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const wordRe = (words: string[]) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(${words.map(reEsc).join("|")})(?![\\p{L}\\p{M}\\p{N}])`, "giu");
 
+// A jump from an example or a search result leaves a way back to the sentence being read.
+let returnTo: { ch: number; s: number } | null = null;
 function jumpTo(ci: number, si: number) {
   closeSheet();
   $("search-panel").hidden = true;
+  returnTo ||= { ch, s: meta.pos.s };
+  $("return").hidden = false;
   showChapter(ci, si);
   const el = spans[si];
   el?.classList.add("flash");
@@ -714,6 +760,13 @@ function foundList(hits: (Found & { tr?: string })[], mark: (text: string) => st
     .map((h) => `<button class="found" data-ci="${h.ci}" data-si="${h.si}"><span>${mark(h.text)}</span>${h.tr ? `<i>${esc(h.tr)}</i>` : ""}<small>${esc(book.chapters[h.ci].title)}</small></button>`)
     .join("");
 }
+
+$("return").addEventListener("click", () => {
+  const back = returnTo;
+  returnTo = null;
+  $("return").hidden = true;
+  if (back) showChapter(back.ch, back.s);
+});
 
 document.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("button.found");
@@ -789,7 +842,12 @@ $("summary").addEventListener("click", () => {
   sumLang.innerHTML = `<option value="${tl}">In ${esc(name(tl))}</option><option value="${sl}">In easy ${esc(name(sl))}</option>`;
   sumLang.value = pref("sumLang") || tl;
   summaryOut.textContent = "";
-  $("sum-key").textContent = `Summarize (${s2name()})`;
+  const st = settings();
+  const both = !st.claudeKey && !st.openaiKey;
+  $("sum-claude").textContent = `Summarize with ${Sum.CLAUDE_MODELS[st.claudeModel] || "Claude"}`;
+  $("sum-openai").textContent = `Summarize with ${Sum.OPENAI_MODELS[st.openaiModel] || "ChatGPT"}`;
+  $("sum-claude").hidden = !both && !st.claudeKey;
+  $("sum-openai").hidden = !both && !st.openaiKey;
   summaryPanel.hidden = false;
 });
 sumLang.addEventListener("change", () => pref("sumLang", sumLang.value));
@@ -799,14 +857,16 @@ function pageText(): string {
   for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page; i++) out.push(sents[i]);
   return out.join(" ");
 }
-const s2name = () => (settings().aiProvider === "openai" ? Sum.OPENAI_MODELS[settings().openaiModel] || "ChatGPT" : Sum.CLAUDE_MODELS[settings().claudeModel] || "Claude");
+type Provider = "claude" | "openai";
+// Prepare uses the provider last used in the panel, else the one with a key.
+const defaultProvider = (): Provider => (pref("sumProvider") as Provider) || (settings().claudeKey ? "claude" : "openai");
 const textOf = (bk: Book, ci: number) => bk.chapters[ci].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
 const chapterText = () => textOf(book, ch);
 
 // Cached per model, language and exact text, so the panel finds summaries made while preparing.
-async function summaryFor(bk: Book, ci: number, outLang: string, text = textOf(bk, ci), scope: "page" | "chapter" = "chapter", onText = (_: string) => {}): Promise<string> {
+async function summaryFor(bk: Book, ci: number, outLang: string, provider: Provider, text = textOf(bk, ci), scope: "page" | "chapter" = "chapter", onText = (_: string) => {}): Promise<string> {
   const s = settings();
-  const openai = s.aiProvider === "openai";
+  const openai = provider === "openai";
   const key = openai ? s.openaiKey : s.claudeKey;
   const model = openai ? s.openaiModel : s.claudeModel;
   const cacheKey = `sum|${model}|${outLang}|${lr.md5(text)}`;
@@ -836,7 +896,7 @@ summaryPanel.addEventListener("click", async (e) => {
   const s = settings();
   const ask: Sum.Ask = { text: sumScope === "page" ? pageText() : chapterText(), scope: sumScope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value };
   const how = b.dataset.sum!;
-  if (how !== "key") {
+  if (!how.startsWith("key-")) {
     // No key: hand the request to the Claude or ChatGPT app. Also copied, in case it is too long for a link.
     const text = Sum.chatText(ask);
     navigator.clipboard?.writeText(text).catch(() => {});
@@ -849,7 +909,9 @@ summaryPanel.addEventListener("click", async (e) => {
   // A summary still streaming must not write over a newer one.
   const onText = (t: string) => void (run === sumRun && (summaryOut.textContent += t));
   try {
-    const out = await summaryFor(book, ch, sumLang.value, ask.text, ask.scope, onText);
+    const provider: Provider = how === "key-openai" ? "openai" : "claude";
+    pref("sumProvider", provider);
+    const out = await summaryFor(book, ch, sumLang.value, provider, ask.text, ask.scope, onText);
     if (run === sumRun) summaryOut.textContent = out;
   } catch (err) {
     if (run === sumRun) summaryOut.innerHTML = `<div class="err">${esc(msg(err))}</div>`;
@@ -873,6 +935,9 @@ async function more() {
     box.innerHTML = `<div class="err">${esc(msg(e))}</div>`;
   }
 }
+
+const mtOn = () => pref("mtReady") === "1" && MT.supported(settings().sl);
+const offlineEn = (text: string) => cached(`mt|es-en|${text}`, () => MT.toEnglish(text));
 
 const sheetError = (m: string) => sheet.insertAdjacentHTML("beforeend", `<div class="err">${esc(m)}</div>`);
 
@@ -920,14 +985,22 @@ async function openPhrase() {
     err = `${msg(e)}. Save phrase still works; it is sent when you are back online.`;
   }
   if (selected !== sel) return;
+  let enPhrase = "", enSent = "";
+  if (!tr && mtOn()) {
+    try {
+      [enPhrase, enSent] = await Promise.all([offlineEn(text), trs[si] ? "" : offlineEn(sents[si])]);
+      err = "Offline: English from the on-device model. Save phrase still works; it is sent when you are back online.";
+    } catch {}
+    if (selected !== sel) return;
+  }
   phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
   const key = `PHRASE-YT|${sl}|${lr.md5(text).slice(0, 16)}`;
   const queued = outbox.some((x) => x.key === key);
   sheet.innerHTML = `<h3>${esc(text)}</h3>
-    <div class="tr">${tr ? esc(tr.tr) : ""}</div>
-    ${err ? `<div class="err">${esc(err)}</div>` : ""}
+    <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
+    ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
     <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>
-    ${trs[si] ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]!.tr)}</b></div>` : ""}`;
+    ${trs[si] || enSent ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}`;
 }
 
 function savePhrase(b: HTMLElement) {

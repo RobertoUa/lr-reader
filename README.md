@@ -72,15 +72,22 @@ Speech:
 Examples, search, page numbers:
 
 1. Word sheet > Show examples: up to 5 other sentences from this book with the same form or its
-   dictionary form, with translations; tap one to jump there (the sentence flashes blue).
+   dictionary form, with translations; tap one to jump there (the sentence flashes blue), then
+   "Back to where you were" returns to the sentence you were reading. Same after a search jump.
 2. Reader > search button: accent- and case-insensitive search across the book; tap a result to jump.
 3. Footer: chapter page (12/31), estimated book page (p. 57 of 412) and percent read.
 
 Summaries:
 
-1. Settings > Summaries with: Claude or ChatGPT, each with its own API key and model (keys stay on
-   the device).
-2. Reader > AI: pick "This page" or "This chapter" and the language, then Summarize: the text
-   streams in; a summary made once opens again offline.
+1. Settings: a Claude and/or an OpenAI API key, and a model for each (keys stay on the device).
+2. Reader > AI: pick "This page" or "This chapter" and the language, then "Summarize with Claude ..."
+   or "Summarize with ChatGPT ..." (one button per key set): the text streams in; a summary made
+   once opens again offline.
 3. Without a key: Open in Claude / Open in ChatGPT open the chat with the request filled in (a
    chapter is too long for a link, so it is copied: paste it), Share... opens the iOS share sheet.
+
+Offline English (for chapters not prepared):
+
+1. Settings > Download offline English translation (about 110 MB, once). Status shows a test line.
+2. Airplane mode, a chapter never prepared: tap a word: English gloss and the sentence in English,
+   marked "Offline: English from the on-device model". Phrases too.
