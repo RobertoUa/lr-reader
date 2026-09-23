@@ -305,12 +305,12 @@ async function askPrepare(id: string) {
   prepDlg.onclose = () => {
     if (prepDlg.returnValue !== "go") return;
     const [a, z] = [Number(prepFrom.value), Number(prepTo.value)].sort((x, y) => x - y);
-    startPrepare(id, Array.from({ length: z - a + 1 }, (_, i) => a + i));
+    startPrepare(id, Array.from({ length: z - a + 1 }, (_, i) => a + i), ($("prep-sum") as HTMLInputElement).checked);
   };
   prepDlg.showModal();
 }
 
-async function startPrepare(id: string, chapters: number[]) {
+async function startPrepare(id: string, chapters: number[], withSummaries = false) {
   if (preparing) {
     preparing.ctl.abort();
     while (preparing) await new Promise((r) => setTimeout(r, 100));
@@ -328,7 +328,18 @@ async function startPrepare(id: string, chapters: number[]) {
     await prepareBook(b, chapters, lang(), Number(settings().rate) || 4, job.ctl.signal, (p) => {
       job.text = prepText(p);
       if (job.line) job.line.textContent = job.text;
-    }, (ci) => chapterPrepared(id, ci, counts));
+    }, async (ci) => {
+      await chapterPrepared(id, ci, counts);
+      if (!withSummaries) return;
+      // A failed summary is reported but does not stop the translations of the next chapters.
+      try {
+        job.text += ` \u00b7 summarizing ${b.chapters[ci].title}...`;
+        if (job.line) job.line.textContent = job.text;
+        await summaryFor(b, ci, pref("sumLang") || settings().tl);
+      } catch (e) {
+        say(`Summary of "${b.chapters[ci].title}" failed: ${msg(e)}`, true);
+      }
+    });
     say(`"${m.title}": chapters ${chapters[0] + 1}-${chapters[chapters.length - 1] + 1} are ready offline.`);
   } catch (e) {
     const paused = job.ctl.signal.aborted;
@@ -772,7 +783,25 @@ function pageText(): string {
   return out.join(" ");
 }
 const s2name = () => (settings().aiProvider === "openai" ? Sum.OPENAI_MODELS[settings().openaiModel] || "ChatGPT" : Sum.CLAUDE_MODELS[settings().claudeModel] || "Claude");
-const chapterText = () => book.chapters[ch].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
+const textOf = (bk: Book, ci: number) => bk.chapters[ci].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
+const chapterText = () => textOf(book, ch);
+
+// Cached per model, language and exact text, so the panel finds summaries made while preparing.
+async function summaryFor(bk: Book, ci: number, outLang: string, text = textOf(bk, ci), scope: "page" | "chapter" = "chapter", onText = (_: string) => {}): Promise<string> {
+  const s = settings();
+  const openai = s.aiProvider === "openai";
+  const key = openai ? s.openaiKey : s.claudeKey;
+  const model = openai ? s.openaiModel : s.claudeModel;
+  const cacheKey = `sum|${model}|${outLang}|${lr.md5(text)}`;
+  const hit = await cacheGet<string>(cacheKey);
+  if (hit) return hit;
+  if (!key) throw new Error(`add a ${openai ? "OpenAI" : "Claude"} API key in Settings, or use Open in Claude / Open in ChatGPT`);
+  if (!navigator.onLine) throw new Error("summaries need a connection the first time; ones made before open offline");
+  const ask: Sum.Ask = { text, scope, title: bk.chapters[ci].title, sl: s.sl, tl: s.tl, outLang };
+  const out = openai ? await Sum.openaiSummarize(ask, key, model, onText) : await (await import("./ai")).summarize(ask, key, model, onText);
+  await cacheSet(cacheKey, out);
+  return out;
+}
 
 let sumScope: "page" | "chapter" = "page";
 let sumRun = 0;
@@ -799,23 +828,14 @@ summaryPanel.addEventListener("click", async (e) => {
     summaryOut.innerHTML = Sum.fitsUrl(text) ? `<div class="sub">Opened with the text filled in (also copied).</div>` : `<div class="sub">Too long for a link: the request is copied, paste it into the chat.</div>`;
     return;
   }
-  const openai = s.aiProvider === "openai";
-  const key = openai ? s.openaiKey : s.claudeKey;
-  const model = openai ? s.openaiModel : s.claudeModel;
-  const cacheKey = `sum|${model}|${sumLang.value}|${lr.md5(ask.text)}`;
-  const hit = await cacheGet<string>(cacheKey);
-  if (hit) return void (summaryOut.textContent = hit);
-  if (!key) return void (summaryOut.innerHTML = `<div class="err">Add a ${openai ? "OpenAI" : "Claude"} API key in Settings, or use Open in Claude / Open in ChatGPT.</div>`);
-  if (!navigator.onLine) return void (summaryOut.innerHTML = `<div class="err">Summaries need a connection the first time; ones made before open offline.</div>`);
   summaryOut.textContent = "";
   // A summary still streaming must not write over a newer one.
   const onText = (t: string) => void (run === sumRun && (summaryOut.textContent += t));
   try {
-    const out = openai ? await Sum.openaiSummarize(ask, key, model, onText) : await (await import("./ai")).summarize(ask, key, model, onText);
-    await cacheSet(cacheKey, out);
+    const out = await summaryFor(book, ch, sumLang.value, ask.text, ask.scope, onText);
     if (run === sumRun) summaryOut.textContent = out;
   } catch (err) {
-    if (run === sumRun) summaryOut.insertAdjacentHTML("beforeend", `<div class="err">${openai ? "ChatGPT" : "Claude"}: ${esc(msg(err))}</div>`);
+    if (run === sumRun) summaryOut.innerHTML = `<div class="err">${esc(msg(err))}</div>`;
   }
 });
 
