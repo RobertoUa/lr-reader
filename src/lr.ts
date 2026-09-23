@@ -36,13 +36,14 @@ async function translateOne(text: string, lang: Lang): Promise<Translated> {
   return { tr: (d.mTranslations as string[]).join("").trim(), nlp: (d.nlp as Token[][]).flat() };
 }
 
-// Several sentences per request, joined with "\n". The server re-splits them itself, so the batch is
-// used only when its pieces line up with ours one to one; otherwise each sentence goes alone.
+// Several sentences per request, joined with a blank line, which the server keeps as a boundary more
+// reliably than "\n". It still re-splits text itself, so the batch is used only when its pieces line up
+// with ours one to one; otherwise each sentence goes alone.
 export async function translate(texts: string[], lang: Lang): Promise<Translated[]> {
-  if (texts.length > 1 && texts.join("\n").length <= 500) {
-    const d = await call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n") }, ...lang, mode: "NORMAL" });
+  if (texts.length > 1 && texts.join("\n\n").length <= 500) {
+    const d = await call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n\n") }, ...lang, mode: "NORMAL" });
     const nlp = d.nlp as Token[][];
-    if (nlp.length === texts.length && nlp.every((n, i) => joined(n) === texts[i].replace(/\s+/g, " ").trim())) {
+    if (nlp.length === texts.length && d.mTranslations.length === texts.length && nlp.every((n, i) => joined(n) === texts[i].replace(/\s+/g, " ").trim())) {
       return nlp.map((n, i) => ({ tr: String(d.mTranslations[i]).trim(), nlp: n }));
     }
   }

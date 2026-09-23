@@ -52,3 +52,7 @@ export async function cached<T>(k: string, fetcher: () => Promise<T>): Promise<T
   await cacheSet(k, v);
   return v;
 }
+
+export const trKey = (text: string, l: { sl: string; tl: string }) => `tr2|${l.sl}|${l.tl}|${text}`;
+export const hdKey = (form: string, t: { lemma?: { text: string }; pos?: string } | undefined, l: { sl: string; tl: string }) =>
+  `hd|${l.sl}|${l.tl}|${form.toLowerCase()}|${t?.lemma?.text || ""}|${t?.pos || ""}`;

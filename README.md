@@ -34,3 +34,14 @@ Words and Language Reactor:
    languagereactor.com Saved Items. Tap Learning again: it is removed there too.
 5. Airplane mode: tap a word you tapped before: same sheet from cache. Mark a word: footer shows
    "1 to sync". Airplane mode off: it syncs and appears on Saved Items.
+
+Phrases and offline preparation:
+
+1. Long-press a word (about half a second), drag across more words, release: they turn blue and the
+   sheet shows the exact text with punctuation and its translation. Save phrase: appears on Saved
+   Items as one phrase. Play reads it.
+2. Library > Prepare: progress line counts chapters, sentences and words; Pause stops at once and
+   Prepare resumes where it stopped (also after closing the app). At the default 2 requests/second
+   a 3,000-sentence book takes about 45 minutes; Language Reactor rate-limits around 10/s.
+3. After it reaches 100%, airplane mode: any word in the book opens with its translation and the
+   sentence translation. Play works only for words already played online.

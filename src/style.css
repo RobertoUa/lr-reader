@@ -45,7 +45,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #sync.error { color: #d33; }
 .w { border-radius: 4px; }
 .w.learning { background: rgba(255, 140, 0, 0.33); }
-.w.on { background: rgba(80, 150, 255, 0.4); }
+.w.on, .w.sel { background: rgba(80, 150, 255, 0.4); }
 
 #sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 60vh; overflow-y: auto; z-index: 5;
   background: var(--btn); color: var(--fg); border-radius: 16px 16px 0 0; box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
@@ -69,3 +69,4 @@ dialog input { display: block; width: 100%; margin-top: 4px; font-size: 16px; pa
 dialog .row { display: flex; gap: 12px; justify-content: flex-end; }
 dialog .row label { flex: 1; }
 .sub { color: var(--muted); font-size: 14px; }
+#books .prep:empty { display: none; }

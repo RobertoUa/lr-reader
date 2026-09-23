@@ -1,8 +1,9 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
-import { addBook, cached, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { addBook, cached, hdKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
+import { prepareBook, type Progress } from "./prepare";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const lib = $("lib"), reader = $("reader"), status = $("status"), books = $("books");
@@ -20,8 +21,8 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", ...JSON.parse(pref("settings") || "{}") });
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string };
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "2", ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -42,7 +43,8 @@ const lemmaOf = (key: string) => key.split("|")[1];
 
 // Pending marks win over the synced list until they are sent.
 function stageOf(lemma: string): lr.Stage | undefined {
-  const e = outbox.find((x) => lemmaOf(x.key) === lemma);
+  const key = lr.wordKey(lemma, settings().sl);
+  const e = outbox.find((x) => x.key === key);
   if (e) return e.op === "save" ? e.item.learningStage : undefined;
   return synced[lemma];
 }
@@ -57,7 +59,7 @@ function renderSync() {
       : outbox.length
         ? `\u00b7 ${outbox.length} to sync`
         : "";
-  $("sync-detail").textContent = outbox.length ? `Outbox: ${outbox.map((e) => `${e.op} ${lemmaOf(e.key)}${e.error ? ` (${e.error}, ${e.attempts} tries)` : ""}`).join("; ")}` : "Outbox empty.";
+  $("sync-detail").textContent = outbox.length ? `Outbox: ${outbox.map((e) => `${e.op} ${e.item?.itemType === "PHRASE" ? `"${e.item.context.phrase.subtitles[1]}"` : lemmaOf(e.key)}${e.error ? ` (${e.error}, ${e.attempts} tries)` : ""}`).join("; ")}` : "Outbox empty.";
 }
 
 async function loadWords() {
@@ -102,7 +104,7 @@ async function flushOutbox() {
   const left = await flush(sent, async (e) => {
     if (e.op === "save") {
       await saveWithFallback(a, e.item);
-      synced[lemmaOf(e.key)] = e.item.learningStage;
+      if (e.item.itemType === "WORD") synced[lemmaOf(e.key)] = e.item.learningStage;
     } else {
       await lr.removeItem(a, e.key);
       delete synced[lemmaOf(e.key)];
@@ -125,7 +127,7 @@ addEventListener("offline", renderSync);
 
 $("open-settings").addEventListener("click", async () => {
   const s = settings();
-  for (const k of ["email", "token", "sl", "tl"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  for (const k of ["email", "token", "sl", "tl", "rate"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
   const est = await navigator.storage?.estimate?.();
   const persisted = await navigator.storage?.persisted?.();
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
@@ -135,7 +137,7 @@ $("open-settings").addEventListener("click", async () => {
 settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk" }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "2" }));
   loadWords();
 });
 
@@ -150,16 +152,71 @@ async function showLibrary() {
   for (const m of list) {
     const li = document.createElement("li");
     li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
-      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%</div></button>
+      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%</div>
+      <div class="sub prep"></div></button>
+      <button class="prep-btn">${preparing?.id === m.id ? "Pause" : m.prepared === 100 ? "Update" : "Prepare"}</button>
       <button class="del" aria-label="Delete">Delete</button>`;
+    li.querySelector(".prep-btn")!.addEventListener("click", () => togglePrepare(m.id));
+    if (preparing?.id === m.id) preparing.line = li.querySelector(".prep") as HTMLElement;
     li.querySelector(".open")!.addEventListener("click", () => openBook(m.id));
     li.querySelector(".del")!.addEventListener("click", async () => {
       if (!confirm(`Delete "${m.title}" and all its data?`)) return;
+      if (preparing?.id === m.id) preparing.ctl.abort();
       await deleteBook(m.id);
       showLibrary();
     });
     books.append(li);
   }
+}
+
+// ---- Prepare for offline ----
+
+let preparing: { id: string; ctl: AbortController; line: HTMLElement | null; text: string } | null = null;
+
+function prepText(p: Progress) {
+  return `chapter ${p.chapter}/${p.chapters} \u00b7 sentences ${p.sentences}/${p.sentencesTotal} \u00b7 words ${p.words}/${p.wordsSeen}`;
+}
+
+async function togglePrepare(id: string) {
+  if (preparing) {
+    const was = preparing.id;
+    preparing.ctl.abort();
+    if (was === id) return;
+    while (preparing) await new Promise((r) => setTimeout(r, 100));
+  }
+  const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
+  if (!b || !m) return;
+  if (!navigator.onLine) return say("Preparing needs a connection.", true);
+  preparing = { id, ctl: new AbortController(), line: null, text: "" };
+  const job = preparing;
+  navigator.storage?.persist?.();
+  showLibrary();
+  say(`Preparing "${m.title}" for offline. Keep the app open; it resumes where it stopped.`);
+  let chapter = 0;
+  try {
+    await prepareBook(b, lang(), Number(settings().rate) || 2, job.ctl.signal, (p) => {
+      job.text = prepText(p);
+      if (job.line) job.line.textContent = job.text;
+      if (p.chapter !== chapter) {
+        chapter = p.chapter;
+        setPrepared(id, Math.floor((100 * (chapter - 1)) / p.chapters));
+      }
+    });
+    await setPrepared(id, 100);
+    say(`"${m.title}" is ready offline.`);
+  } catch (e) {
+    const paused = job.ctl.signal.aborted;
+    say(paused ? `Paused "${m.title}": ${job.text}` : `Preparing "${m.title}" stopped: ${msg(e)}`, !paused);
+  } finally {
+    preparing = null;
+    if (!lib.hidden) showLibrary();
+  }
+}
+
+// The reader writes the same record (position), so read it fresh before changing it.
+async function setPrepared(id: string, prepared: number) {
+  const m = await getMeta(id);
+  if (m) await putMeta({ ...m, prepared });
 }
 
 file.addEventListener("change", async () => {
@@ -193,7 +250,7 @@ let trs: (lr.Translated | undefined)[] = [];
 const W = () => viewport.clientWidth;
 const pages = () => Math.max(1, Math.round(viewport.scrollWidth / W()));
 const pageOf = (el: Element) => Math.floor((el.getBoundingClientRect().left - content.getBoundingClientRect().left) / W());
-const trKey = (text: string) => `tr|${settings().sl}|${settings().tl}|${text}`;
+const trKey = (text: string) => dbTrKey(text, lang());
 
 const WORD = /[\p{L}\p{M}\p{N}]+(?:['\u2019-][\p{L}\p{M}\p{N}]+)*/gu;
 function wordSpans(text: string) {
@@ -303,7 +360,8 @@ function goto(p: number) {
   meta.pos = { ch, s };
   meta.done = offsets[ch] + s;
   where.textContent = `${book.chapters[ch].title} \u00b7 page ${page + 1}/${pages()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
-  putMeta(meta);
+  const { id, pos, done } = meta;
+  getMeta(id).then((m) => m && putMeta({ ...m, pos, done }));
   translatePage();
 }
 
@@ -325,8 +383,9 @@ async function translatePage() {
       let len = 0;
       while (want.length && (len += sents[want[0]].length + 1) <= 500) batch.push(want.shift()!);
       if (!batch.length) batch.push(want.shift()!);
-      const res = await lr.translate(batch.map((i) => sents[i]), lang());
-      await Promise.all(res.map((r, k) => cacheSet(trKey(sents[batch[k]]), r)));
+      const texts = batch.map((i) => sents[i]);
+      const res = await lr.translate(texts, lang());
+      await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k]), r)));
       if (ch !== shown) break;
       res.forEach((r, k) => (trs[batch[k]] = r));
     }
@@ -344,9 +403,11 @@ async function translatePage() {
 
 async function ensureTr(si: number): Promise<lr.Translated> {
   if (trs[si]) return trs[si]!;
-  const [r] = await lr.translate([sents[si]], lang());
-  await cacheSet(trKey(sents[si]), r);
-  return (trs[si] = r);
+  const text = sents[si], shown = ch;
+  const [r] = await lr.translate([text], lang());
+  await cacheSet(trKey(text), r);
+  if (ch === shown) trs[si] = r;
+  return r;
 }
 
 function turn(dir: 1 | -1) {
@@ -375,6 +436,8 @@ function closeSheet() {
   sheet.hidden = true;
   current?.classList.remove("on");
   current = null;
+  selected = [];
+  content.querySelectorAll(".w.sel").forEach((x) => x.classList.remove("sel"));
 }
 
 async function openWord(w: HTMLElement) {
@@ -401,7 +464,7 @@ async function openWord(w: HTMLElement) {
   let entries: string[] = [];
   try {
     const t = token;
-    entries = await cached(`hd|${sl}|${settings().tl}|${form.toLowerCase()}|${t?.lemma?.text || ""}|${t?.pos || ""}`, () => lr.hoverDict(form, t, lang()));
+    entries = await cached(hdKey(form, t, lang()), () => lr.hoverDict(form, t, lang()));
   } catch (e) {
     err ||= `Dictionary: ${msg(e)}`;
   }
@@ -470,9 +533,76 @@ async function play() {
   }
 }
 
+// ---- Phrase selection: long-press a word, drag across others, release ----
+
+let selected: HTMLElement[] = [];
+let phrase: { text: string; tr: string; nlp: lr.Token[]; si: number } | null = null;
+
+function selectRange(from: HTMLElement, to: HTMLElement) {
+  const all = [...content.querySelectorAll<HTMLElement>(".w")];
+  const [a, b] = [all.indexOf(from), all.indexOf(to)].sort((x, y) => x - y);
+  selected = all.slice(a, b + 1);
+  all.forEach((x, i) => x.classList.toggle("sel", i >= a && i <= b));
+}
+
+async function openPhrase() {
+  const sel = selected;
+  current?.classList.remove("on");
+  current = null;
+  // The exact text between the first and last word, punctuation included.
+  const range = document.createRange();
+  range.setStartBefore(sel[0]);
+  range.setEndAfter(sel[sel.length - 1]);
+  const text = range.toString().replace(/\s+/g, " ").trim();
+  const si = Number((sel[0].parentElement as HTMLElement).dataset.s);
+  const sl = settings().sl;
+  phrase = null;
+  audio = cached(`tts|${sl}|${text.toLowerCase()}`, () => lr.tts(text, sl));
+  audio.catch(() => {});
+  sheet.hidden = false;
+  sheet.innerHTML = `<h3>${esc(text)}</h3><div class="tr">...</div>`;
+  let tr: lr.Translated | undefined;
+  let err = "";
+  try {
+    tr = await cached(trKey(text), async () => (await lr.translate([text], lang()))[0]);
+    await ensureTr(si);
+  } catch (e) {
+    err = msg(e);
+  }
+  if (selected !== sel) return;
+  if (tr) phrase = { text, tr: tr.tr, nlp: tr.nlp, si };
+  const key = `PHRASE-YT|${sl}|${lr.md5(text).slice(0, 16)}`;
+  const queued = outbox.some((x) => x.key === key);
+  sheet.innerHTML = `<h3>${esc(text)}</h3>
+    <div class="tr">${tr ? esc(tr.tr) : ""}</div>
+    ${err ? `<div class="err">${esc(err)}</div>` : ""}
+    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button></div>
+    ${trs[si] ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]!.tr)}</b></div>` : ""}`;
+}
+
+function savePhrase(b: HTMLElement) {
+  const si = phrase?.si ?? -1;
+  const tr = trs[si];
+  if (!phrase || !tr) {
+    sheet.insertAdjacentHTML("beforeend", `<div class="err">No translation for this phrase yet; connect once to translate it.</div>`);
+    return;
+  }
+  const index0 = offsets[ch] + si;
+  const ref = pref("ref") === "CHAT" ? chatRef(index0) : lr.bookRef(meta.id, meta.title, settings().sl, index0);
+  const context: lr.Context = { text: sents[si], tr: tr.tr, nlp: tr.nlp, prev: sents[si - 1] ?? null, next: sents[si + 1] ?? null, ref };
+  const item = lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, context, lang());
+  outbox = enqueue(outbox, "save", item.key, item);
+  cacheSet("outbox", outbox);
+  b.classList.add("on");
+  b.textContent = "Saved";
+  renderSync();
+  flushOutbox();
+}
+
 sheet.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
+  if (b.dataset.act === "save-phrase") savePhrase(b);
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say") play();
   if (b.dataset.act === "more") more();
@@ -481,8 +611,39 @@ sheet.addEventListener("click", (e) => {
 // ---- Input ----
 
 let down: { x: number; y: number } | null = null;
-viewport.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
+let press = 0;
+let selFrom: HTMLElement | null = null;
+const wordAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<HTMLElement>("#content .w") || null;
+
+viewport.addEventListener("pointerdown", (e) => {
+  down = { x: e.clientX, y: e.clientY };
+  selFrom = null;
+  const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
+  clearTimeout(press);
+  if (!w) return;
+  press = window.setTimeout(() => {
+    closeSheet();
+    selFrom = w;
+    viewport.setPointerCapture(e.pointerId);
+    selectRange(w, w);
+  }, 400);
+});
+viewport.addEventListener("pointermove", (e) => {
+  if (selFrom) {
+    const w = wordAt(e.clientX, e.clientY);
+    if (w) selectRange(selFrom, w);
+  } else if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) clearTimeout(press);
+});
+viewport.addEventListener("pointercancel", () => {
+  clearTimeout(press);
+  down = selFrom = null;
+});
 viewport.addEventListener("pointerup", (e) => {
+  clearTimeout(press);
+  if (selFrom) {
+    selFrom = down = null;
+    return void openPhrase();
+  }
   if (!down) return;
   const dx = e.clientX - down.x, dy = e.clientY - down.y;
   down = null;
