@@ -662,9 +662,10 @@ function translateBatch(texts: string[]): Promise<lr.Translated[]> {
   return p;
 }
 
-// AI sources answer in seconds per request, so the first 2-3 sentences on screen go alone and the rest
-// of the page follows in larger requests in parallel. Language Reactor takes 500-character batches.
-const FIRST_CHARS = 200, PARALLEL_AI = 3;
+// AI sources take seconds per request, growing with the text, so the first sentences on screen go in a
+// small request and the rest in parallel requests started at the same time. Language Reactor takes
+// 500-character batches one after another.
+const FIRST_CHARS = 200, PARALLEL_AI = 4;
 async function translatePage() {
   if (translating) return void (again = true);
   if (!loaded || !navigator.onLine || !spans.length) return;
@@ -690,8 +691,7 @@ async function translatePage() {
   try {
     if (!src.ai) for (const b of batches) await run(b);
     else {
-      await run(batches[0]);
-      let next = 1;
+      let next = 0;
       await Promise.all(Array.from({ length: PARALLEL_AI }, async () => {
         while (next < batches.length) await run(batches[next++]);
       }));
