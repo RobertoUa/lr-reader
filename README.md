@@ -127,3 +127,8 @@ Study tools (reader > menu button):
    Again / Good / Known (Known also marks the word KNOWN on Language Reactor).
 5. Settings > Export backup (share sheet on iPhone, download elsewhere), Import backup: books,
    positions, bookmarks, word lists, summaries, stats, settings, pending marks; keys only if ticked.
+
+Word sheet extras:
+
+1. Frequency: rank among the 50,000 most common Spanish words (e.g. "#534 very common"), offline.
+2. Synonyms (with a ChatGPT or Claude key): up to 5 Spanish synonyms in the sense of the sentence.

@@ -70,6 +70,8 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
 - Study tools (reader menu): word list per book, read aloud (device voice, auto page turn), stats (time,
   pages, words marked per day; unknown-word density per page and chapter), review with spaced
   repetition (Leitner 1/3/7/14/30 days; Known also marks KNOWN on Language Reactor).
+- Word sheet: frequency rank (bundled FrequencyWords es top 50k, CC BY-SA 4.0, credited in Settings) and
+  AI synonyms when a ChatGPT/Claude key is set (cached per word).
 - Backup: export/import JSON (books, positions, bookmarks, word lists, summaries, stats, settings,
   outbox; API keys and token only if ticked; translations not included).
 

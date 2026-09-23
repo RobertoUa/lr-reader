@@ -8,6 +8,8 @@ import * as Sum from "./summary";
 import * as S from "./source";
 import * as MT from "./mt";
 import * as Study from "./study";
+import * as Freq from "./freq";
+import { synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -801,12 +803,14 @@ async function openWord(w: HTMLElement) {
   sheet.innerHTML = `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
+    <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
     <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Show examples</button></div>
     <div id="more"></div>
     <div id="examples"></div>
     <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : esc(enSent)}</b></div>`;
+  wordExtras(w, form, lemma, token?.pos || "", sents[si]);
 }
 
 function where0(si: number) {
@@ -1121,6 +1125,31 @@ async function more() {
   } catch (e) {
     box.innerHTML = `<div class="err">${esc(msg(e))}</div>`;
   }
+}
+
+// Popularity from the bundled frequency list, and synonyms from ChatGPT/Claude when a key is set.
+function aiForExtras(): import("./aitr").AiCfg | null {
+  const s = settings(), src = source();
+  if (src.ai) return src.ai;
+  if (s.openaiKey) return { provider: "openai", key: s.openaiKey, model: s.trModelOpenai };
+  if (s.claudeKey) return { provider: "claude", key: s.claudeKey, model: s.trModelClaude };
+  return null;
+}
+async function wordExtras(w: HTMLElement, form: string, lemma: string, pos: string, sentence: string) {
+  const box = () => (current === w ? document.getElementById("word-extra") : null);
+  const parts: string[] = [];
+  const render = () => box() && (box()!.textContent = parts.filter(Boolean).join(" \u00b7 "));
+  const sl = settings().sl;
+  if (Freq.supported(sl)) {
+    Freq.popularity(form, lemma).then((p) => ((parts[0] = `Frequency ${p}`), render())).catch(() => {});
+  }
+  const cfg = aiForExtras();
+  if (!cfg) return;
+  try {
+    const syn = await cached(`syn|${sl}|${lemma}|${pos}`, () => aiSynonyms(lemma, pos, sentence, lang(), cfg));
+    parts[1] = syn.length ? `Synonyms: ${syn.join(", ")}` : "";
+    render();
+  } catch {}
 }
 
 const mtOn = () => pref("mtReady") === "1" && MT.supported(settings().sl);

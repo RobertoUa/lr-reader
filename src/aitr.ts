@@ -99,3 +99,10 @@ export async function dictionary(word: string, lemma: string, pos: string, sente
   const user = `Word: ${word}\nDictionary form: ${lemma}\nPart of speech here: ${pos}\nSentence: ${sentence}`;
   return (await ask<{ entries: DictEntry[] }>(cfg, system, user, DICT_SCHEMA)).entries;
 }
+
+const SYNONYM_SCHEMA = obj({ synonyms: { type: "array", items: { type: "string" } } });
+export async function synonyms(lemma: string, pos: string, sentence: string, lang: Lang, cfg: AiCfg): Promise<string[]> {
+  const system = `Give up to 5 common ${langName(lang.sl)} synonyms of the word in the sense it has in the sentence, most common first; none if there are none.`;
+  const user = `Word: ${lemma}\nPart of speech: ${pos}\nSentence: ${sentence}`;
+  return (await ask<{ synonyms: string[] }>(cfg, system, user, SYNONYM_SCHEMA)).synonyms;
+}

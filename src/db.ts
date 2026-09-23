@@ -72,7 +72,7 @@ export const hdLemmaKey = (t: { lemma?: { text: string }; pos?: string; form: { 
 // Translations, word glosses, dictionary entries and offline English results; summaries, the saved-word
 // list and the outbox stay.
 export async function clearTranslations(): Promise<number> {
-  const drop = (await keys<string>(cache)).filter((k) => /^(tr2|tr3|trx|hd|hdl|fd|mt)\|/.test(String(k)));
+  const drop = (await keys<string>(cache)).filter((k) => /^(tr2|tr3|trx|hd|hdl|fd|mt|syn)\|/.test(String(k)));
   await delMany(drop, cache);
   return drop.length;
 }
