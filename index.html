@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LR Reader">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>LR Reader</title>
+<script>
+  try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+</script>
+</head>
+<body>
+<main id="lib">
+  <header class="bar">
+    <h1>LR Reader</h1>
+    <label class="btn">Import EPUB<input id="file" type="file" accept=".epub,application/epub+zip" hidden></label>
+  </header>
+  <p id="status" role="status"></p>
+  <ul id="books"></ul>
+</main>
+<section id="reader" hidden>
+  <header class="bar">
+    <button id="back" aria-label="Library">&lsaquo;</button>
+    <select id="toc" aria-label="Chapter"></select>
+    <button id="smaller" aria-label="Smaller text">A-</button>
+    <button id="bigger" aria-label="Bigger text">A+</button>
+    <button id="theme" aria-label="Light or dark">&#9680;</button>
+  </header>
+  <div id="viewport"><article id="content"></article></div>
+  <footer id="where"></footer>
+</section>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
