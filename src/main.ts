@@ -932,7 +932,7 @@ $("summary").addEventListener("click", () => {
   const name = (c: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c;
   sumLang.innerHTML = `<option value="${tl}">In ${esc(name(tl))}</option><option value="${sl}">In easy ${esc(name(sl))}</option>`;
   sumLang.value = pref("sumLang") || tl;
-  summaryOut.textContent = "";
+  showSaved();
   const st = settings();
   const both = !st.claudeKey && !st.openaiKey;
   $("sum-claude").textContent = `Summarize with ${Sum.CLAUDE_MODELS[st.claudeModel] || "Claude"}`;
@@ -941,7 +941,26 @@ $("summary").addEventListener("click", () => {
   $("sum-openai").hidden = !both && !st.openaiKey;
   summaryPanel.hidden = false;
 });
-sumLang.addEventListener("change", () => pref("sumLang", sumLang.value));
+sumLang.addEventListener("change", () => {
+  pref("sumLang", sumLang.value);
+  showSaved();
+});
+
+const modelName = (m: string) => Sum.CLAUDE_MODELS[m] || Sum.OPENAI_MODELS[m] || m;
+type Saved = { text: string; model: string; at: number };
+// The latest summary of a text in a language, from whichever model made it; shown as soon as the panel opens.
+const savedKey = (outLang: string, text: string) => `sumlast|${outLang}|${lr.md5(text)}`;
+const renderSummary = (v: Saved) => {
+  summaryOut.innerHTML = `<div class="sub">${esc(modelName(v.model))} \u00b7 ${new Date(v.at).toLocaleString()}</div><div></div>`;
+  summaryOut.lastElementChild!.textContent = v.text;
+};
+async function showSaved() {
+  const run = ++sumRun;
+  const v = await cacheGet<Saved>(savedKey(sumLang.value, sumScope === "page" ? pageText() : chapterText()));
+  if (run !== sumRun) return;
+  if (v) renderSummary(v);
+  else summaryOut.textContent = "";
+}
 
 function pageText(): string {
   const out: string[] = [];
@@ -962,12 +981,15 @@ async function summaryFor(bk: Book, ci: number, outLang: string, provider: Provi
   const model = openai ? s.openaiModel : s.claudeModel;
   const cacheKey = `sum|${model}|${outLang}|${lr.md5(text)}`;
   const hit = await cacheGet<string>(cacheKey);
-  if (hit) return hit;
+  if (hit) {
+    if (!(await cacheGet(savedKey(outLang, text)))) await cacheSet(savedKey(outLang, text), { text: hit, model, at: Date.now() } satisfies Saved);
+    return hit;
+  }
   if (!key) throw new Error(`add a ${openai ? "OpenAI" : "Claude"} API key in Settings, or use Open in Claude / Open in ChatGPT`);
   if (!navigator.onLine) throw new Error("summaries need a connection the first time; ones made before open offline");
   const ask: Sum.Ask = { text, scope, title: bk.chapters[ci].title, sl: s.sl, tl: s.tl, outLang };
   const out = openai ? await Sum.openaiSummarize(ask, key, model, onText) : await (await import("./ai")).summarize(ask, key, model, onText);
-  await cacheSet(cacheKey, out);
+  await Promise.all([cacheSet(cacheKey, out), cacheSet(savedKey(outLang, text), { text: out, model, at: Date.now() } satisfies Saved)]);
   return out;
 }
 
@@ -979,7 +1001,7 @@ summaryPanel.addEventListener("click", async (e) => {
   if (scopeBtn) {
     sumScope = scopeBtn.dataset.scope as "page" | "chapter";
     summaryPanel.querySelectorAll<HTMLElement>("[data-scope]").forEach((x) => x.classList.toggle("on", x === scopeBtn));
-    return;
+    return void showSaved();
   }
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-sum]");
   if (!b) return;
@@ -996,16 +1018,29 @@ summaryPanel.addEventListener("click", async (e) => {
     summaryOut.innerHTML = Sum.fitsUrl(text) ? `<div class="sub">Opened with the text filled in (also copied).</div>` : `<div class="sub">Too long for a link: the request is copied, paste it into the chat.</div>`;
     return;
   }
-  summaryOut.textContent = "";
+  const provider: Provider = how === "key-openai" ? "openai" : "claude";
+  const model = provider === "openai" ? s.openaiModel : s.claudeModel;
+  // Models think before the first word arrives; show that something is happening until it does.
+  const started = Date.now();
+  const waiting = () => `Summarizing this ${ask.scope} with ${modelName(model)}... ${Math.round((Date.now() - started) / 1000)}s`;
+  summaryOut.innerHTML = `<div class="sub"></div><div></div>`;
+  const status = summaryOut.firstElementChild!, body = summaryOut.lastElementChild!;
+  status.textContent = waiting();
+  const timer = setInterval(() => run === sumRun && !body.textContent && (status.textContent = waiting()), 1000);
   // A summary still streaming must not write over a newer one.
-  const onText = (t: string) => void (run === sumRun && (summaryOut.textContent += t));
+  const onText = (t: string) => {
+    if (run !== sumRun) return;
+    if (!body.textContent) status.textContent = `${modelName(model)} \u00b7 writing...`;
+    body.textContent += t;
+  };
   try {
-    const provider: Provider = how === "key-openai" ? "openai" : "claude";
     pref("sumProvider", provider);
     const out = await summaryFor(book, ch, sumLang.value, provider, ask.text, ask.scope, onText);
-    if (run === sumRun) summaryOut.textContent = out;
+    if (run === sumRun) renderSummary({ text: out, model, at: Date.now() });
   } catch (err) {
     if (run === sumRun) summaryOut.innerHTML = `<div class="err">${esc(msg(err))}</div>`;
+  } finally {
+    clearInterval(timer);
   }
 });
 
