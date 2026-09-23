@@ -68,12 +68,23 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
 - Offline English fallback: opus-mt es-en in the browser (about 110 MB), runtime served from the app.
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
 
+## QA in desktop Chrome on the live site (2026-09-23, translations from ChatGPT)
+
+Passed: import, open, highlighting from the real word list (by dictionary form), page translation,
+word sheet, More, Show examples, marking Learning (synced to the account) and undo (removed from the
+account), phrase selection and translation, accent-insensitive search, jump with flash and "Back to
+where you were", bookmarks (star, list, remove), Aa themes and fonts, ChatGPT summary with live
+progress and the saved summary on reopen, Prepare of a whole book with chapter summaries.
+Fixed after QA: the app reloaded onto a new version immediately, even mid-typing in Settings (now at
+a safe moment); bookmark text was just the chapter heading (now the start of the page).
+
 ## Known limits and open items
 
 - Offline English translation runs on the main thread (a short freeze on first use on iPhone).
 - Offline drafts are keyed by the written form until they sync (handled, not re-keyed).
 - Email/password login to fetch the token: not pursued (the account signs in with Google; the bookmarklet covers it).
-- QA in real Chrome was interrupted by the Language Reactor block.
+- First AI translation of a page takes about 10 s with GPT-5.4 mini (one request for the whole page);
+  a tap during that wait makes its own request for the sentence.
 - No iPhone test yet: first-tap audio, Home Screen install, storage persistence.
 
 ## Credentials used in development

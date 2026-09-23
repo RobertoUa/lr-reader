@@ -1,5 +1,4 @@
 import "./style.css";
-import { registerSW } from "virtual:pwa-register";
 import { parseEpub, type Book } from "./epub";
 import { type Bookmark, addBook, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
@@ -322,6 +321,7 @@ $("test-voice").addEventListener("click", (e) => {
 // ---- Library ----
 
 async function showLibrary() {
+  setTimeout(maybeUpdate);
   closeSheet();
   reader.hidden = true;
   lib.hidden = false;
@@ -928,7 +928,9 @@ $("bookmarks").addEventListener("click", () => {
 $("bookmark-toggle").addEventListener("click", () => {
   const here = pageBookmark();
   const s = anchor();
-  const next = here ? (meta.bookmarks || []).filter((b) => b !== here) : [...(meta.bookmarks || []), { ch, s, text: sents[s].slice(0, 140), at: Date.now() }];
+  let text = "";
+  for (let i = s; i < sents.length && text.length < 80; i++) text += (text ? " " : "") + sents[i];
+  const next = here ? (meta.bookmarks || []).filter((b) => b !== here) : [...(meta.bookmarks || []), { ch, s, text: text.slice(0, 140), at: Date.now() }];
   meta.bookmarks = next;
   goto(page);
   renderBookmarks();
@@ -1249,8 +1251,24 @@ lookPanel.addEventListener("click", (e) => {
   relayout();
 });
 
-// A new version activates and reloads straight away, instead of on the launch after next.
-registerSW({ immediate: true });
+// A new version is applied at a safe moment: right after launch, on the library with nothing open, or
+// when the app goes to the background; never while a dialog or panel is in use.
+const started = Date.now();
+let applyUpdate: (() => void) | null = null;
+const busy = () => !!document.querySelector("dialog[open]") || !sheet.hidden || !!document.querySelector(".panel:not([hidden])");
+const maybeUpdate = () => applyUpdate && (Date.now() - started < 5000 || (!lib.hidden && !busy()) || document.visibilityState === "hidden") && applyUpdate();
+// The new worker takes over by itself (skipWaiting); the page keeps running the old code until it
+// reloads here. A change of controller on a page that already had one is an update.
+if ("serviceWorker" in navigator) {
+  const hadWorker = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadWorker) return;
+    applyUpdate = () => location.reload();
+    maybeUpdate();
+  });
+  navigator.serviceWorker.register("./sw.js");
+}
+document.addEventListener("visibilitychange", maybeUpdate);
 navigator.storage?.persist?.();
 showLibrary();
 loadWords();

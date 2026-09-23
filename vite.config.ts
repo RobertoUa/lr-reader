@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: "autoUpdate",
+      // main.ts registers the worker itself, to reload onto a new version only at a safe moment.
+      injectRegister: null,
       includeAssets: ["apple-touch-icon.png"],
       // pdf.js ships its worker as .mjs; cache it too so PDF import works offline.
       workbox: {
