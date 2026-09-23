@@ -6,7 +6,9 @@ import * as lr from "./lr";
 export type Source = { id: string; ai?: ai.AiCfg; batchChars: number };
 
 export const LR: Source = { id: "lr", batchChars: 500 };
-export const aiSource = (cfg: ai.AiCfg): Source => ({ id: `${cfg.provider}:${cfg.model}`, ai: cfg, batchChars: 1500 });
+// AI answer time grows with output (every word is analyzed), so several mid-sized requests in parallel
+// finish a page sooner than one large one.
+export const aiSource = (cfg: ai.AiCfg): Source => ({ id: `${cfg.provider}:${cfg.model}`, ai: cfg, batchChars: 600 });
 
 // AI results are cached apart from Language Reactor's: switching the source re-translates on demand.
 export const trKey = (src: Source, text: string, lang: lr.Lang) => (src.ai ? `trx|${src.id}|${lang.sl}|${lang.tl}|${text}` : lrTrKey(text, lang));
