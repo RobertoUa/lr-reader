@@ -103,3 +103,5 @@ button.found b { color: var(--accent); }
 button.found i { color: var(--muted); font-style: normal; font-family: -apple-system, sans-serif; font-size: 14px; }
 button.found small { color: var(--muted); font-size: 12px; font-family: -apple-system, sans-serif; }
 .s.flash { background: rgba(80, 150, 255, 0.25); transition: background 1s; }
+#summary-out { white-space: pre-wrap; font-family: var(--family); font-size: 17px; line-height: 1.45; }
+#summary-panel select { font-size: 15px; }

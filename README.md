@@ -60,7 +60,8 @@ Appearance:
 Speech:
 
 1. Tap a word: it is spoken at once (Settings > "Say the word when I tap it" turns this off).
-2. Sheet: Play (word or selected phrase), Play sentence.
+2. Sheet: Play (word or selected phrase), Play sentence. Language Reactor speaks only up to 30
+   characters, so longer text always uses a device voice.
 3. Settings > Voice: Language Reactor, or any Spanish iOS voice (works offline; download Enhanced or
    Premium voices in iOS Settings > Accessibility > Spoken Content > Voices). Speed 0.6x-1.2x.
    Test voice plays a sample.
@@ -71,3 +72,10 @@ Examples, search, page numbers:
    dictionary form, with translations; tap one to jump there (the sentence flashes blue).
 2. Reader > search button: accent- and case-insensitive search across the book; tap a result to jump.
 3. Footer: chapter page (12/31), estimated book page (p. 57 of 412) and percent read.
+
+Summaries (Claude):
+
+1. Settings: paste a Claude API key (console.anthropic.com > API keys) and pick a model
+   (default Claude Opus 5). The key stays on the device.
+2. Reader > AI: "This page" or "This chapter", in your language or in easy Spanish. The text streams
+   in; a summary made once opens again offline.

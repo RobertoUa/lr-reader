@@ -4,6 +4,7 @@ import { addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGe
 import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
+import { MODELS as AI_MODELS } from "./ai-models";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -22,8 +23,8 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, ...JSON.parse(pref("settings") || "{}") });
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string };
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -148,7 +149,8 @@ addEventListener("offline", renderSync);
 
 $("open-settings").addEventListener("click", async () => {
   const s = settings();
-  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  ($("settings").querySelector("[name=claudeModel]") as HTMLSelectElement).innerHTML = Object.entries(AI_MODELS).map(([id, n]) => `<option value="${id}">${n}</option>`).join("");
+  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "claudeKey", "claudeModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
   (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked = s.autoSay;
   fillVoices();
   const est = await navigator.storage?.estimate?.();
@@ -161,7 +163,7 @@ settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
   const autoSay = (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked;
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5" }));
   loadWords();
 });
 
@@ -190,8 +192,21 @@ function fillVoices() {
 }
 speechSynthesis.addEventListener?.("voiceschanged", () => settingsDlg.open && fillVoices());
 
+// Language Reactor's speech endpoint answers BAD_REQUEST above 30 characters, so longer text needs a
+// device voice even when Language Reactor is the chosen voice.
+const LR_TTS_MAX = 30;
+function deviceVoice() {
+  const sl = settings().sl;
+  const all = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl));
+  return all.find((v) => v.default) || all.find((v) => v.lang.toLowerCase() === `${sl}-${sl}`) || all[0] || null;
+}
+
 // Must be called synchronously from a tap.
 function speak(text: string, onError: (m: string) => void, voice = systemVoice(), rate = Number(settings().speechRate) || 1) {
+  if (!voice && text.length > LR_TTS_MAX) {
+    voice = deviceVoice();
+    if (!voice) return onError("Language Reactor can only say short words; this device has no voice for the book language.");
+  }
   if (voice) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -561,6 +576,7 @@ let current: HTMLElement | null = null;
 
 function closeSheet() {
   sheet.hidden = true;
+  summaryPanel.hidden = true;
   lookPanel.hidden = true;
   current?.classList.remove("on");
   current = null;
@@ -722,6 +738,51 @@ $("search-input").addEventListener("input", () => {
   }, 250);
 });
 
+// ---- Summaries from Claude ----
+
+const summaryPanel = $("summary-panel"), summaryOut = $("summary-out"), sumLang = $<HTMLSelectElement>("sum-lang");
+$("summary").addEventListener("click", () => {
+  const open = summaryPanel.hidden;
+  closeSheet();
+  if (!open) return;
+  const { sl, tl } = settings();
+  const name = (c: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c;
+  sumLang.innerHTML = `<option value="${tl}">In ${esc(name(tl))}</option><option value="${sl}">In easy ${esc(name(sl))}</option>`;
+  sumLang.value = pref("sumLang") || tl;
+  summaryOut.textContent = "";
+  summaryPanel.hidden = false;
+});
+sumLang.addEventListener("change", () => pref("sumLang", sumLang.value));
+
+function pageText(): string {
+  const out: string[] = [];
+  for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page; i++) out.push(sents[i]);
+  return out.join(" ");
+}
+const chapterText = () => book.chapters[ch].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
+
+summaryPanel.addEventListener("click", async (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-sum]");
+  if (!b) return;
+  const scope = b.dataset.sum as "page" | "chapter";
+  const s = settings();
+  const text = scope === "page" ? pageText() : chapterText();
+  const key = `sum|${s.claudeModel}|${sumLang.value}|${lr.md5(text)}`;
+  const hit = await cacheGet<string>(key);
+  if (hit) return void (summaryOut.textContent = hit);
+  if (!s.claudeKey) return void (summaryOut.innerHTML = `<div class="err">Add a Claude API key in Settings (console.anthropic.com &gt; API keys).</div>`);
+  if (!navigator.onLine) return void (summaryOut.innerHTML = `<div class="err">Summaries need a connection the first time; ones made before open offline.</div>`);
+  summaryOut.textContent = "";
+  const { summarize } = await import("./ai");
+  try {
+    const out = await summarize({ apiKey: s.claudeKey, model: s.claudeModel, text, scope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value, onText: (t) => (summaryOut.textContent += t) });
+    summaryOut.textContent = out;
+    await cacheSet(key, out);
+  } catch (err) {
+    summaryOut.insertAdjacentHTML("beforeend", `<div class="err">Claude: ${esc(msg(err))}</div>`);
+  }
+});
+
 async function more() {
   const w = current;
   if (!w) return;
@@ -861,7 +922,7 @@ viewport.addEventListener("pointerup", (e) => {
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return turn(dx < 0 ? 1 : -1);
   const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
   if (w) return w === current ? closeSheet() : void openWord(w);
-  if (!sheet.hidden || !lookPanel.hidden || !searchPanel.hidden) return closeSheet(), void (searchPanel.hidden = true);
+  if (!sheet.hidden || !lookPanel.hidden || !searchPanel.hidden || !summaryPanel.hidden) return closeSheet(), void (searchPanel.hidden = true);
   const x = e.clientX / W();
   if (x < 0.3) turn(-1);
   else if (x > 0.7) turn(1);

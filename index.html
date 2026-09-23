@@ -31,6 +31,7 @@
     <button id="back" aria-label="Library">&lsaquo;</button>
     <select id="toc" aria-label="Chapter"></select>
     <button id="search" aria-label="Search">&#9906;</button>
+    <button id="summary" aria-label="Summary">AI</button>
     <button id="look" aria-label="Themes and settings">Aa</button>
   </header>
   <div id="viewport"><article id="content"></article></div>
@@ -38,6 +39,11 @@
 </section>
 <div id="sheet" hidden></div>
 <div id="look-panel" class="panel" hidden></div>
+<div id="summary-panel" class="panel" hidden>
+  <div class="look-row"><button data-sum="page">This page</button><button data-sum="chapter">This chapter</button>
+    <select id="sum-lang" aria-label="Summary language"></select></div>
+  <div id="summary-out"></div>
+</div>
 <div id="search-panel" class="panel" hidden>
   <input id="search-input" type="search" placeholder="Search this book" autocomplete="off" autocapitalize="off" spellcheck="false">
   <div id="search-results"></div>
@@ -61,6 +67,8 @@
       <label>My language<input name="tl" size="4"></label>
     </div>
     <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
+    <label>Claude API key (for summaries; stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
+    <label>Claude model<select name="claudeModel"></select></label>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>
