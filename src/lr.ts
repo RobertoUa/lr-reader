@@ -46,13 +46,20 @@ function chunks(text: string): string[] {
   return [...out, rest];
 }
 
+// Language Reactor answers requests it does not want to serve with a dictionary-shaped decoy (scrambled
+// words, or a "this app is reselling..." notice) instead of an error; never cache that as a translation.
+const translation = (d: any) => {
+  if (!Array.isArray(d?.nlp) || !Array.isArray(d?.mTranslations)) throw new Error("Language Reactor returned no translation (it is refusing requests from this app)");
+  return d as { nlp: Token[][]; mTranslations: string[] };
+};
+
 export type Pace = <T>(fn: () => Promise<T>) => Promise<T>;
 const unpaced: Pace = (fn) => fn();
 
 async function translateOne(text: string, lang: Lang, pace: Pace): Promise<Translated> {
   const parts: Translated[] = [];
   for (const chunk of chunks(text)) {
-    const d = await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: chunk }, ...lang, mode: "NORMAL" }));
+    const d = translation(await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: chunk }, ...lang, mode: "NORMAL" })));
     // The server does its own sentence split, so one of our sentences can come back as several.
     parts.push({ tr: (d.mTranslations as string[]).join("").trim(), nlp: (d.nlp as Token[][]).flat() });
   }
@@ -65,8 +72,8 @@ async function translateOne(text: string, lang: Lang, pace: Pace): Promise<Trans
 // with ours one to one; otherwise each sentence goes alone. `pace` spaces every request (preparation).
 export async function translate(texts: string[], lang: Lang, pace: Pace = unpaced): Promise<Translated[]> {
   if (texts.length > 1 && texts.join("\n\n").length <= MAX) {
-    const d = await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n\n") }, ...lang, mode: "NORMAL" }));
-    const nlp = d.nlp as Token[][];
+    const d = translation(await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n\n") }, ...lang, mode: "NORMAL" })));
+    const nlp = d.nlp;
     if (nlp.length === texts.length && d.mTranslations.length === texts.length && nlp.every((n, i) => joined(n) === norm(texts[i]))) {
       return nlp.map((n, i) => ({ tr: String(d.mTranslations[i]).trim(), nlp: n }));
     }
