@@ -25,8 +25,10 @@ Milestone 1:
 
 Words and Language Reactor:
 
-1. Library > Settings: enter your Language Reactor email and token (the `diocoToken` the browser
-   extension sends in its request bodies). Footer error about Settings disappears.
+1. Library > Settings: enter your Language Reactor email and token. On iPhone: Settings > Copy
+   bookmarklet, save it as a Safari bookmark, tap it on languagereactor.com while logged in, Copy for
+   LR Reader, then Settings > Paste Language Reactor login > Save. Footer error about Settings
+   disappears.
 2. Open a book: words from your LR list at stage LEARNING are orange, including conjugated forms
    (they match through the dictionary form once the page has been translated, a second or so).
 3. Tap a word: sheet shows the word, dictionary form and part of speech, translations, the sentence

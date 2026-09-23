@@ -6,6 +6,7 @@ import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
 import * as Sum from "./summary";
+import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -230,6 +231,22 @@ function speak(text: string, onError: (m: string) => void, voice = systemVoice()
     })
     .catch((e) => onError(`Play: ${msg(e)}`));
 }
+
+$("copy-bookmarklet").addEventListener("click", () => {
+  const code = "javascript:" + bookmarkletSrc.replace(/^\s*\/\/.*$/gm, "").replace(/\s*\n\s*/g, " ").trim();
+  navigator.clipboard.writeText(code).then(() => ($("copy-bookmarklet").textContent = "Copied"), (e) => ($("sync-detail").textContent = `Copy failed: ${msg(e)}`));
+});
+$("paste-login").addEventListener("click", async () => {
+  try {
+    const j = JSON.parse(await navigator.clipboard.readText());
+    if (j?.lrReader !== 1 || !j.token) throw new Error("the clipboard does not hold a login from the bookmarklet");
+    (settingsDlg.querySelector("[name=email]") as HTMLInputElement).value = j.email || "";
+    (settingsDlg.querySelector("[name=token]") as HTMLInputElement).value = j.token;
+    $("paste-login").textContent = "Pasted, now Save";
+  } catch (e) {
+    $("sync-detail").textContent = `Paste login: ${e instanceof SyntaxError ? "the clipboard does not hold a login from the bookmarklet" : msg(e)}`;
+  }
+});
 
 $("test-voice").addEventListener("click", (e) => {
   e.preventDefault();

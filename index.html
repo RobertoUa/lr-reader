@@ -64,6 +64,17 @@
 <dialog id="settings">
   <form method="dialog">
     <h2>Settings</h2>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:8px"><button type="button" id="paste-login">Paste Language Reactor login</button><button type="button" id="copy-bookmarklet">Copy bookmarklet</button></div>
+    <details class="sub" style="margin-bottom:12px"><summary>How to get the token on iPhone</summary>
+      <ol>
+        <li>Tap Copy bookmarklet.</li>
+        <li>In Safari, bookmark any page (Share, Add Bookmark), then Bookmarks, Edit, open that bookmark and replace its address with the copied text; name it "LR token".</li>
+        <li>Open languagereactor.com in Safari and log in.</li>
+        <li>Open Bookmarks and tap "LR token": a box shows your email; tap Copy for LR Reader.</li>
+        <li>Back here: Paste Language Reactor login, then Save.</li>
+      </ol>
+      The bookmarklet only asks Language Reactor for your own token, using the login already in Safari.
+    </details>
     <label>Language Reactor email<input name="email" type="email" autocomplete="off"></label>
     <label>Token (diocoToken)<input name="token" type="password" autocomplete="off"></label>
     <div class="row">
