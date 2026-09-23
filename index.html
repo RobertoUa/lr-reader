@@ -40,8 +40,10 @@
 <div id="sheet" hidden></div>
 <div id="look-panel" class="panel" hidden></div>
 <div id="summary-panel" class="panel" hidden>
-  <div class="look-row"><button data-sum="page">This page</button><button data-sum="chapter">This chapter</button>
+  <div class="look-row"><button data-scope="page" class="on">This page</button><button data-scope="chapter">This chapter</button>
     <select id="sum-lang" aria-label="Summary language"></select></div>
+  <div class="look-row"><button data-sum="key" id="sum-key">Summarize</button><button data-sum="claude">Open in Claude</button>
+    <button data-sum="chatgpt">Open in ChatGPT</button><button data-sum="share">Share&hellip;</button></div>
   <div id="summary-out"></div>
 </div>
 <div id="search-panel" class="panel" hidden>
@@ -51,6 +53,7 @@
 <dialog id="prepare">
   <form method="dialog">
     <h2>Prepare for offline</h2>
+    <div class="row" id="prep-presets"><button type="button" data-n="1">This chapter</button><button type="button" data-n="5">Next 5 chapters</button><button type="button" data-n="0">To the end</button></div>
     <label>From chapter<select id="prep-from"></select></label>
     <label>To chapter<select id="prep-to"></select></label>
     <p id="prep-info" class="sub"></p>
@@ -67,8 +70,11 @@
       <label>My language<input name="tl" size="4"></label>
     </div>
     <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
-    <label>Claude API key (for summaries; stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
+    <label>Summaries with<select name="aiProvider"><option value="claude">Claude (API key)</option><option value="openai">ChatGPT (API key)</option></select></label>
+    <label>Claude API key (stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
     <label>Claude model<select name="claudeModel"></select></label>
+    <label>OpenAI API key (stays on this device)<input name="openaiKey" type="password" autocomplete="off"></label>
+    <label>ChatGPT model<select name="openaiModel"></select></label>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>

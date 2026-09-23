@@ -41,7 +41,7 @@ Phrases and offline preparation:
 1. Long-press a word (about half a second), drag across more words, release: they turn blue and the
    sheet shows the exact text with punctuation and its translation. Save phrase: appears on Saved
    Items as one phrase. Play reads it.
-2. Library > Prepare: pick a chapter range (default: current chapter to the end); progress line counts chapters, sentences and words; Pause stops at once and
+2. Library > Prepare: pick a chapter range or a preset (This chapter, Next 5 chapters, To the end); progress line counts chapters, sentences and words; Pause stops at once and
    Prepare resumes where it stopped (also after closing the app). It starts with the chapter being
    read and looks words up once per dictionary form. At the default 4 requests/second a 3,000-sentence
    book takes about 15 minutes; Language Reactor rate-limits a little above 5/s.
@@ -73,9 +73,11 @@ Examples, search, page numbers:
 2. Reader > search button: accent- and case-insensitive search across the book; tap a result to jump.
 3. Footer: chapter page (12/31), estimated book page (p. 57 of 412) and percent read.
 
-Summaries (Claude):
+Summaries:
 
-1. Settings: paste a Claude API key (console.anthropic.com > API keys) and pick a model
-   (default Claude Opus 5). The key stays on the device.
-2. Reader > AI: "This page" or "This chapter", in your language or in easy Spanish. The text streams
-   in; a summary made once opens again offline.
+1. Settings > Summaries with: Claude or ChatGPT, each with its own API key and model (keys stay on
+   the device).
+2. Reader > AI: pick "This page" or "This chapter" and the language, then Summarize: the text
+   streams in; a summary made once opens again offline.
+3. Without a key: Open in Claude / Open in ChatGPT open the chat with the request filled in (a
+   chapter is too long for a link, so it is copied: paste it), Share... opens the iOS share sheet.

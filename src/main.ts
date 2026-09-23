@@ -1,10 +1,11 @@
 import "./style.css";
+import { registerSW } from "virtual:pwa-register";
 import { parseEpub, type Book } from "./epub";
 import { addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
-import { MODELS as AI_MODELS } from "./ai-models";
+import * as Sum from "./summary";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -23,8 +24,8 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", ...JSON.parse(pref("settings") || "{}") });
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; aiProvider: string; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string };
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, aiProvider: "claude", claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -149,8 +150,10 @@ addEventListener("offline", renderSync);
 
 $("open-settings").addEventListener("click", async () => {
   const s = settings();
-  ($("settings").querySelector("[name=claudeModel]") as HTMLSelectElement).innerHTML = Object.entries(AI_MODELS).map(([id, n]) => `<option value="${id}">${n}</option>`).join("");
-  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "claudeKey", "claudeModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  const opts = (m: Record<string, string>) => Object.entries(m).map(([id, n]) => `<option value="${id}">${n}</option>`).join("");
+  ($("settings").querySelector("[name=claudeModel]") as HTMLSelectElement).innerHTML = opts(Sum.CLAUDE_MODELS);
+  ($("settings").querySelector("[name=openaiModel]") as HTMLSelectElement).innerHTML = opts(Sum.OPENAI_MODELS);
+  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "aiProvider", "claudeKey", "claudeModel", "openaiKey", "openaiModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
   (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked = s.autoSay;
   fillVoices();
   const est = await navigator.storage?.estimate?.();
@@ -163,7 +166,7 @@ settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
   const autoSay = (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked;
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5" }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, aiProvider: v("aiProvider") || "claude", claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5", openaiKey: v("openaiKey"), openaiModel: v("openaiModel") || "gpt-5.5" }));
   loadWords();
 });
 
@@ -290,6 +293,14 @@ async function askPrepare(id: string) {
     $("prep-info").textContent = `${z - a + 1} chapters, ${n} sentences. Already prepared chapters are skipped quickly.`;
   };
   prepFrom.onchange = prepTo.onchange = info;
+  $("prep-presets").onclick = (e) => {
+    const n = Number((e.target as HTMLElement).dataset.n);
+    if (Number.isNaN(n)) return;
+    const from = Math.min(m.pos.ch, b.chapters.length - 1);
+    prepFrom.value = String(from);
+    prepTo.value = String(n ? Math.min(from + n - 1, b.chapters.length - 1) : b.chapters.length - 1);
+    info();
+  };
   info();
   prepDlg.onclose = () => {
     if (prepDlg.returnValue !== "go") return;
@@ -750,6 +761,7 @@ $("summary").addEventListener("click", () => {
   sumLang.innerHTML = `<option value="${tl}">In ${esc(name(tl))}</option><option value="${sl}">In easy ${esc(name(sl))}</option>`;
   sumLang.value = pref("sumLang") || tl;
   summaryOut.textContent = "";
+  $("sum-key").textContent = `Summarize (${s2name()})`;
   summaryPanel.hidden = false;
 });
 sumLang.addEventListener("change", () => pref("sumLang", sumLang.value));
@@ -759,27 +771,51 @@ function pageText(): string {
   for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page; i++) out.push(sents[i]);
   return out.join(" ");
 }
+const s2name = () => (settings().aiProvider === "openai" ? Sum.OPENAI_MODELS[settings().openaiModel] || "ChatGPT" : Sum.CLAUDE_MODELS[settings().claudeModel] || "Claude");
 const chapterText = () => book.chapters[ch].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
 
+let sumScope: "page" | "chapter" = "page";
+let sumRun = 0;
+
 summaryPanel.addEventListener("click", async (e) => {
+  const scopeBtn = (e.target as HTMLElement).closest<HTMLElement>("[data-scope]");
+  if (scopeBtn) {
+    sumScope = scopeBtn.dataset.scope as "page" | "chapter";
+    summaryPanel.querySelectorAll<HTMLElement>("[data-scope]").forEach((x) => x.classList.toggle("on", x === scopeBtn));
+    return;
+  }
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-sum]");
   if (!b) return;
-  const scope = b.dataset.sum as "page" | "chapter";
+  const run = ++sumRun;
   const s = settings();
-  const text = scope === "page" ? pageText() : chapterText();
-  const key = `sum|${s.claudeModel}|${sumLang.value}|${lr.md5(text)}`;
-  const hit = await cacheGet<string>(key);
+  const ask: Sum.Ask = { text: sumScope === "page" ? pageText() : chapterText(), scope: sumScope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value };
+  const how = b.dataset.sum!;
+  if (how !== "key") {
+    // No key: hand the request to the Claude or ChatGPT app. Also copied, in case it is too long for a link.
+    const text = Sum.chatText(ask);
+    navigator.clipboard?.writeText(text).catch(() => {});
+    if (how === "share") return void navigator.share?.({ text }).catch(() => {});
+    window.open(Sum.chatUrl(how as "claude" | "chatgpt", text), "_blank");
+    summaryOut.innerHTML = Sum.fitsUrl(text) ? `<div class="sub">Opened with the text filled in (also copied).</div>` : `<div class="sub">Too long for a link: the request is copied, paste it into the chat.</div>`;
+    return;
+  }
+  const openai = s.aiProvider === "openai";
+  const key = openai ? s.openaiKey : s.claudeKey;
+  const model = openai ? s.openaiModel : s.claudeModel;
+  const cacheKey = `sum|${model}|${sumLang.value}|${lr.md5(ask.text)}`;
+  const hit = await cacheGet<string>(cacheKey);
   if (hit) return void (summaryOut.textContent = hit);
-  if (!s.claudeKey) return void (summaryOut.innerHTML = `<div class="err">Add a Claude API key in Settings (console.anthropic.com &gt; API keys).</div>`);
+  if (!key) return void (summaryOut.innerHTML = `<div class="err">Add a ${openai ? "OpenAI" : "Claude"} API key in Settings, or use Open in Claude / Open in ChatGPT.</div>`);
   if (!navigator.onLine) return void (summaryOut.innerHTML = `<div class="err">Summaries need a connection the first time; ones made before open offline.</div>`);
   summaryOut.textContent = "";
-  const { summarize } = await import("./ai");
+  // A summary still streaming must not write over a newer one.
+  const onText = (t: string) => void (run === sumRun && (summaryOut.textContent += t));
   try {
-    const out = await summarize({ apiKey: s.claudeKey, model: s.claudeModel, text, scope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value, onText: (t) => (summaryOut.textContent += t) });
-    summaryOut.textContent = out;
-    await cacheSet(key, out);
+    const out = openai ? await Sum.openaiSummarize(ask, key, model, onText) : await (await import("./ai")).summarize(ask, key, model, onText);
+    await cacheSet(cacheKey, out);
+    if (run === sumRun) summaryOut.textContent = out;
   } catch (err) {
-    summaryOut.insertAdjacentHTML("beforeend", `<div class="err">Claude: ${esc(msg(err))}</div>`);
+    if (run === sumRun) summaryOut.insertAdjacentHTML("beforeend", `<div class="err">${openai ? "ChatGPT" : "Claude"}: ${esc(msg(err))}</div>`);
   }
 });
 
@@ -957,6 +993,8 @@ lookPanel.addEventListener("click", (e) => {
   relayout();
 });
 
+// A new version activates and reloads straight away, instead of on the launch after next.
+registerSW({ immediate: true });
 navigator.storage?.persist?.();
 showLibrary();
 loadWords();
