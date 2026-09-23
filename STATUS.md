@@ -67,6 +67,11 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   speak on tap.
 - Offline English fallback: opus-mt es-en in the browser (about 110 MB), runtime served from the app.
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
+- Study tools (reader menu): word list per book, read aloud (device voice, auto page turn), stats (time,
+  pages, words marked per day; unknown-word density per page and chapter), review with spaced
+  repetition (Leitner 1/3/7/14/30 days; Known also marks KNOWN on Language Reactor).
+- Backup: export/import JSON (books, positions, bookmarks, word lists, summaries, stats, settings,
+  outbox; API keys and token only if ticked; translations not included).
 
 ## QA in desktop Chrome on the live site (2026-09-23, translations from ChatGPT)
 

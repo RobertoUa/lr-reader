@@ -114,3 +114,16 @@ Speed and cache:
 2. Settings > Clear translation cache: cached translations and word lookups are removed, books show
    "prepared 0%"; summaries, saved words and pending marks stay.
 3. Offline English runs in a background worker: the page stays responsive while the model loads.
+
+Study tools (reader > menu button):
+
+1. Words in this book: every word marked Learning/Known here, with form -> dictionary form, glosses and
+   stage; tap one to go to its sentence.
+2. Read aloud: reads from the current sentence to the end of the chapter with the device voice,
+   highlights the sentence, turns pages; "Stop reading" stops. Changing chapter or leaving stops it.
+3. Stats: reading time, pages and words marked for the last 7 days; unknown-word density (not in your
+   Known or Learning list) for this page and chapter.
+4. Review (also Library > Review (N)): cards for Learning words due (1, 3, 7, 14, 30 days); Show answer,
+   Again / Good / Known (Known also marks the word KNOWN on Language Reactor).
+5. Settings > Export backup (share sheet on iPhone, download elsewhere), Import backup: books,
+   positions, bookmarks, word lists, summaries, stats, settings, pending marks; keys only if ticked.

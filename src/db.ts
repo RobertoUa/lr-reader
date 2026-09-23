@@ -1,4 +1,4 @@
-import { createStore, get, getMany, set, del, delMany, keys, values } from "idb-keyval";
+import { createStore, get, getMany, set, setMany, del, delMany, keys, values } from "idb-keyval";
 import type { Book } from "./epub";
 
 export type Pos = { ch: number; s: number };
@@ -76,3 +76,15 @@ export async function clearTranslations(): Promise<number> {
   await delMany(drop, cache);
   return drop.length;
 }
+
+// Words marked per book (wl|<bookId>), reading stats per day (stats|<date>): kept by Clear translation cache.
+export const getCacheByPrefix = async <T>(prefix: string): Promise<[string, T][]> => {
+  const ks = (await keys<string>(cache)).map(String).filter((k) => k.startsWith(prefix));
+  const vs = await getMany<T>(ks, cache);
+  return ks.map((k, i) => [k, vs[i] as T]);
+};
+export const setCacheMany = (entries: [string, unknown][]) => setMany(entries, cache);
+export const putBook = async (m: Meta, book: Book) => {
+  await set(m.id, book, texts);
+  await putMeta(m);
+};

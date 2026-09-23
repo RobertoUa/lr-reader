@@ -20,6 +20,7 @@
 <main id="lib">
   <header class="bar">
     <h1>LR Reader</h1>
+    <button id="open-review">Review</button>
     <button id="open-settings" aria-label="Settings">Settings</button>
     <label class="btn">Import book<input id="file" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf" hidden></label>
   </header>
@@ -30,6 +31,7 @@
   <header class="bar">
     <button id="back" aria-label="Library">&lsaquo;</button>
     <select id="toc" aria-label="Chapter"></select>
+    <button id="menu" aria-label="Words, read aloud, stats, review">&#9776;</button>
     <button id="bookmarks" aria-label="Bookmarks">&#9734;</button>
     <button id="search" aria-label="Search">&#9906;</button>
     <button id="summary" aria-label="Summary">AI</button>
@@ -37,6 +39,7 @@
   </header>
   <div id="viewport"><article id="content"></article></div>
   <button id="return" hidden>&lsaquo; Back to where you were</button>
+  <button id="reading-stop" hidden>&#9632; Stop reading</button>
   <footer><span id="where"></span> <span id="sync"></span></footer>
 </section>
 <div id="sheet" hidden></div>
@@ -48,6 +51,15 @@
     <button data-sum="chatgpt">Open in ChatGPT</button><button data-sum="share">Share&hellip;</button></div>
   <div id="summary-out"></div>
 </div>
+<div id="menu-panel" class="panel" hidden>
+  <div class="look-row"><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
+    <button data-menu="stats">Stats</button><button data-menu="review">Review</button></div>
+  <div id="menu-out"></div>
+</div>
+<section id="review" hidden>
+  <header class="bar"><button id="review-close" aria-label="Close">&lsaquo;</button><h1>Review</h1><span id="review-left" class="sub"></span></header>
+  <div id="review-card"></div>
+</section>
 <div id="bookmarks-panel" class="panel" hidden>
   <button id="bookmark-toggle"></button>
   <div id="bookmark-list"></div>
@@ -99,6 +111,10 @@
     <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
     <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>
     <p id="mt-status" class="sub"></p>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Export backup</button>
+      <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
+    <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
+    <p id="backup-status" class="sub">Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>

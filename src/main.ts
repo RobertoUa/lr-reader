@@ -1,12 +1,13 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
-import { type Bookmark, addBook, clearTranslations, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { type Bookmark, addBook, clearTranslations, getCacheByPrefix, putBook, setCacheMany, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
 import * as Sum from "./summary";
 import * as S from "./source";
 import * as MT from "./mt";
+import * as Study from "./study";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -331,6 +332,7 @@ $("test-voice").addEventListener("click", (e) => {
 
 async function showLibrary() {
   setTimeout(maybeUpdate);
+  updateReviewCount();
   closeSheet();
   reader.hidden = true;
   lib.hidden = false;
@@ -568,6 +570,7 @@ const goToSentence = (si: number) => goto(spans[si] ? pageOf(spans[si]) : 0);
 
 function showChapter(i: number, sentence: number | "end" = 0) {
   closeSheet();
+  if (!readingFromChapter(i)) stopReading();
   view++;
   ch = i;
   toc.value = String(i);
@@ -719,6 +722,7 @@ async function ensureTr(si: number): Promise<lr.Translated> {
 
 function turn(dir: 1 | -1) {
   closeSheet();
+  countPage();
   clearReturn();
   if (dir > 0 && page >= pages() - 1) {
     if (ch < book.chapters.length - 1) showChapter(ch + 1);
@@ -778,6 +782,7 @@ async function openWord(w: HTMLElement) {
     else err ||= `Dictionary: ${msg(e)}`;
   }
   if (current !== w) return;
+  currentGlosses = entries;
   let enSent = "", offlineNote = "";
   if (mtOn() && (!tr || !entries.length)) {
     try {
@@ -829,6 +834,7 @@ function setStage(stage: lr.Stage) {
     outbox = enqueue(outbox, "save", key, email, tr && index >= 0 ? lr.wordItem(lemma, next, index, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft);
   }
   cacheSet("outbox", outbox);
+  logWord(si, lemma, form, Number(w.dataset.o), next);
   sheet.querySelectorAll<HTMLElement>("[data-stage]").forEach((b) => b.classList.toggle("on", b.dataset.stage === next));
   mark();
   renderSync();
@@ -1209,6 +1215,232 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.act === "examples") examples();
 });
 
+// ---- Word log, review, read aloud, stats, density, backup ----
+
+let currentGlosses: string[] = [];
+const logKey = (bookId: string) => `wl|${bookId}`;
+
+// Every word marked in the reader is kept with its sentence, for the word list and for review.
+async function logWord(si: number, lemma: string, form: string, offset: number, stage?: lr.Stage) {
+  const log = (await cacheGet<Record<string, Study.WordEntry>>(logKey(meta.id))) || {};
+  if (!stage) delete log[lemma];
+  else {
+    const now = Date.now();
+    log[lemma] = { box: 0, due: now, at: now, ...(log[lemma] as Study.WordEntry | undefined), lemma, form, stage, bookId: meta.id, bookTitle: meta.title, ch, si, offset, ...where0(si), tr: trs[si]?.tr || "", glosses: currentGlosses };
+    bumpStat({ marked: 1 });
+  }
+  await cacheSet(logKey(meta.id), log);
+}
+
+const allWords = async () => (await getCacheByPrefix<Record<string, Study.WordEntry>>("wl|")).flatMap(([, v]) => Object.values(v || {}));
+async function saveEntry(e: Study.WordEntry) {
+  const log = (await cacheGet<Record<string, Study.WordEntry>>(logKey(e.bookId))) || {};
+  log[e.lemma] = e;
+  await cacheSet(logKey(e.bookId), log);
+}
+
+// Reading time counts the gap between page turns when it is under two minutes.
+let lastActive = 0;
+async function bumpStat(add: Partial<Study.Day>) {
+  const k = `stats|${Study.dayKey()}`;
+  const d = (await cacheGet<Study.Day>(k)) || { ms: 0, pages: 0, marked: 0 };
+  await cacheSet(k, { ms: d.ms + (add.ms || 0), pages: d.pages + (add.pages || 0), marked: d.marked + (add.marked || 0) });
+}
+function countPage() {
+  const now = Date.now(), gap = now - lastActive;
+  lastActive = now;
+  bumpStat({ pages: 1, ms: gap < 120000 ? gap : 0 });
+}
+
+const menuPanel = $("menu-panel"), menuOut = $("menu-out");
+$("menu").addEventListener("click", () => {
+  const open = menuPanel.hidden;
+  closeSheet();
+  if (!open) return;
+  menuOut.innerHTML = "";
+  menuPanel.hidden = false;
+});
+menuPanel.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-menu]");
+  if (!b) return;
+  const what = b.dataset.menu;
+  if (what === "words") showWords();
+  if (what === "stats") showStats();
+  if (what === "read") readAloud();
+  if (what === "review") openReview(meta.id);
+});
+
+async function showWords() {
+  const list = Object.values((await cacheGet<Record<string, Study.WordEntry>>(logKey(meta.id))) || {}).sort((a, b) => a.ch - b.ch || a.si - b.si);
+  if (!list.length) return void (menuOut.innerHTML = `<div class="sub">No words marked in this book yet. Tap a word and choose Learning or Known.</div>`);
+  menuOut.innerHTML =
+    `<div class="sub">${list.length} word${list.length === 1 ? "" : "s"} marked in this book. Tap one to go to its sentence.</div>` +
+    foundList(
+      list.map((w) => ({ ci: w.ch, si: w.si, text: w.text, tr: `${w.form !== w.lemma ? `${w.form} \u2192 ` : ""}${w.lemma} \u00b7 ${w.glosses.slice(0, 3).join(", ")} \u00b7 ${w.stage.toLowerCase()}` })),
+      esc,
+    );
+}
+
+async function showStats() {
+  const days = Study.lastDays(7);
+  const vals = await Promise.all(days.map((d) => cacheGet<Study.Day>(`stats|${d}`)));
+  const rows = days.map((d, i) => `<tr><td>${d}</td><td>${Math.round((vals[i]?.ms || 0) / 60000)} min</td><td>${vals[i]?.pages || 0}</td><td>${vals[i]?.marked || 0}</td></tr>`).join("");
+  const sl = settings().sl;
+  const lemmasOf = (from: number, to: number) => spans.slice(from, to).flatMap((span, k) => sentenceLemmas(from + k, [...span.children] as HTMLElement[]));
+  const onPage = Study.density(lemmasOf(Math.max(0, firstFrom(page) - 1), firstFrom(page + 1)), (l) => stageOf(l, l, sl));
+  const inChapter = Study.density(lemmasOf(0, spans.length), (l) => stageOf(l, l, sl));
+  const words = await allWords();
+  menuOut.innerHTML = `<table><tr><th>Day</th><th>Reading</th><th>Pages</th><th>Words marked</th></tr>${rows}</table>
+    <p><b>Unknown words</b> (in neither your Known nor Learning list): this page ${onPage.pct}% (${onPage.unknown} of ${onPage.distinct}),
+    this chapter ${inChapter.pct}% (${inChapter.unknown} of ${inChapter.distinct}). Words in sentences not translated yet count as written.</p>
+    <p class="sub">This book: read ${pct(meta.done, meta.sentences)}%. Words marked in this app: ${words.length}, ${Study.due(words).length} due for review.</p>`;
+}
+
+// ---- Read aloud: the rest of the chapter, sentence by sentence, turning pages as it goes ----
+
+let readingCh = -1;
+const readingFromChapter = (i: number) => readingCh === i;
+function stopReading() {
+  if (readingCh < 0) return;
+  readingCh = -1;
+  speechSynthesis.cancel();
+  $("reading-stop").hidden = true;
+  content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
+}
+function readAloud() {
+  const voice = systemVoice() || deviceVoice();
+  if (!voice) return void (menuOut.innerHTML = `<div class="err">This device has no voice for the book language.</div>`);
+  closeSheet();
+  stopReading();
+  readingCh = ch;
+  $("reading-stop").hidden = false;
+  // Queued at once from the tap: iOS only lets speech start from a user action.
+  for (let i = anchor(); i < sents.length; i++) {
+    const u = new SpeechSynthesisUtterance(sents[i]);
+    u.voice = voice;
+    u.lang = voice.lang;
+    u.rate = Number(settings().speechRate) || 1;
+    u.onstart = () => {
+      if (readingCh !== ch) return;
+      content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
+      spans[i]?.classList.add("reading");
+      const p = spans[i] ? pageOf(spans[i]) : page;
+      if (p !== page) goto(p);
+    };
+    if (i === sents.length - 1) u.onend = stopReading;
+    speechSynthesis.speak(u);
+  }
+}
+$("reading-stop").addEventListener("click", stopReading);
+
+// ---- Review ----
+
+const reviewEl = $("review"), card = $("review-card");
+let queue: Study.WordEntry[] = [];
+async function openReview(bookId?: string) {
+  closeSheet();
+  const words = await allWords();
+  queue = Study.due(bookId ? words.filter((w) => w.bookId === bookId) : words);
+  reviewEl.hidden = false;
+  showCard();
+}
+function showCard(answer = false) {
+  $("review-left").textContent = queue.length ? `${queue.length} left` : "";
+  const e = queue[0];
+  if (!e) return void (card.innerHTML = `<h2>All done</h2><p class="sub">No words are due. Words you mark as Learning while reading come here.</p>`);
+  const ctx = esc(e.text).replace(new RegExp(`(?<![\\p{L}])(${esc(e.form).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?![\\p{L}])`, "iu"), "<b>$1</b>");
+  card.innerHTML = `<h2>${esc(e.form)}</h2><div class="ctx">${ctx}</div><div class="sub">${esc(e.bookTitle)}</div>
+    <div class="act"><button data-r="say">Play</button><button data-r="say-sentence">Play sentence</button></div>
+    ${answer
+      ? `<div class="answer"><div><b>${esc(e.lemma)}</b> \u00b7 ${esc(e.glosses.join(", ") || "-")}</div><div class="sub">${esc(e.tr)}</div></div>
+         <div class="grades"><button data-r="again">Again</button><button data-r="good">Good</button><button data-r="known">Known</button></div>`
+      : `<div class="grades"><button data-r="show">Show answer</button></div>`}`;
+}
+card.addEventListener("click", async (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-r]");
+  const e = queue[0];
+  if (!b || !e) return;
+  const r = b.dataset.r;
+  const err = (m: string) => card.insertAdjacentHTML("beforeend", `<div class="err">${esc(m)}</div>`);
+  if (r === "say") return speak(e.form, err);
+  if (r === "say-sentence") return speak(e.text, err);
+  if (r === "show") return showCard(true);
+  queue.shift();
+  if (r === "known") {
+    // Marked KNOWN on Language Reactor too, completed at sync time like an offline mark.
+    const { sl, email } = settings();
+    const draft: Draft = { draft: true, itemType: "WORD", learningStage: "KNOWN", offset: e.offset, text: e.text, prev: e.prev, next: e.next, ref: e.ref };
+    outbox = enqueue(outbox, "save", lr.wordKey(e.lemma, sl), email, draft);
+    cacheSet("outbox", outbox);
+    flushOutbox();
+    await saveEntry({ ...e, stage: "KNOWN" });
+  } else {
+    const g = Study.grade(e, r === "good");
+    await saveEntry(g);
+    if (r === "again") queue.push(g);
+  }
+  showCard();
+});
+async function updateReviewCount() {
+  const n = Study.due(await allWords()).length;
+  $("open-review").textContent = n ? `Review (${n})` : "Review";
+}
+$("open-review").addEventListener("click", () => openReview());
+$("review-close").addEventListener("click", () => {
+  reviewEl.hidden = true;
+  if (!lib.hidden) showLibrary();
+});
+
+// ---- Backup ----
+
+const SECRET = ["token", "claudeKey", "openaiKey"];
+$("backup-export").addEventListener("click", () => exportBackup().catch((e) => ($("backup-status").textContent = `Export failed: ${msg(e)}`)));
+async function exportBackup() {
+  const status = $("backup-status");
+  status.textContent = "Preparing...";
+  const metas = await listBooks();
+  // A book the browser can no longer read is left out and named, instead of failing the whole export.
+  const unreadable: string[] = [];
+  const books = (await Promise.all(metas.map(async (m) => ({ meta: m, book: await getBook(m.id).catch(() => void unreadable.push(m.title)) })))).filter((b) => b.book);
+  const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
+  const s: Record<string, unknown> = { ...settings() };
+  if (!($("backup-secrets") as HTMLInputElement).checked) for (const k of SECRET) delete s[k];
+  const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), books, cache: cacheEntries };
+  const file = new File([JSON.stringify(data)], `lr-reader-backup-${Study.dayKey()}.json`, { type: "application/json" });
+  // iOS saves files through the share sheet; elsewhere a download works.
+  if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] }).catch(() => {});
+  else {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  status.textContent = `Exported ${books.length} books, ${cacheEntries.length} other records (${(file.size / 1e6).toFixed(1)} MB).${unreadable.length ? ` Could not read: ${unreadable.join(", ")}.` : ""}`;
+}
+$("backup-import").addEventListener("change", async () => {
+  const input = $("backup-import") as HTMLInputElement, status = $("backup-status");
+  const f = input.files?.[0];
+  input.value = "";
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (data?.app !== "lr-reader") throw new Error("not an LR Reader backup");
+    // Translations are not in the backup, so nothing counts as prepared after a restore.
+    for (const { meta: m, book: b } of data.books) if (b) await putBook({ ...m, prepared: 0, preparedChapters: [] }, b);
+    await setCacheMany(data.cache);
+    const keep = Object.fromEntries(SECRET.map((k) => [k, (settings() as Record<string, unknown>)[k]]));
+    pref("settings", JSON.stringify({ ...keep, ...data.settings }));
+    if (data.look) pref("look", data.look);
+    outboxLoaded = false;
+    status.textContent = `Restored ${data.books.length} books and ${data.cache.length} other records.`;
+    loadWords();
+    showLibrary();
+  } catch (e) {
+    status.textContent = `Import failed: ${msg(e)}`;
+  }
+});
+
 // ---- Input ----
 
 let down: { x: number; y: number } | null = null;
@@ -1268,7 +1500,10 @@ toc.addEventListener("change", () => {
   clearReturn();
   showChapter(Number(toc.value));
 });
-$("back").addEventListener("click", showLibrary);
+$("back").addEventListener("click", () => {
+  stopReading();
+  showLibrary();
+});
 
 const lookPanel = $("look-panel");
 let look = Look.load();
