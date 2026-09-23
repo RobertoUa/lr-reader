@@ -48,16 +48,18 @@ async function pool<T>(items: T[], work: (x: T) => Promise<void>) {
   }));
 }
 
-// Caches every sentence translation and hover-dictionary entry, chapter by chapter, starting with the
-// one being read. Everything already cached is skipped, so a stopped run resumes where it left off.
-export async function prepareBook(book: Book, lang: lr.Lang, perSecond: number, startAt: number, signal: AbortSignal, progress: (p: Progress) => void) {
-  const request = pacer(Math.max(0.5, perSecond), signal);
-  const sentencesTotal = book.chapters.reduce((n, c) => n + c.blocks.reduce((m, b) => m + b.sentences.length, 0), 0);
-  const p: Progress = { chapter: 0, chapters: book.chapters.length, sentences: 0, sentencesTotal, words: 0, wordsSeen: 0 };
-  const seen = new Set<string>();
-  const order = book.chapters.map((_, i) => (i + startAt) % book.chapters.length);
+export const chapterSentences = (book: Book) => book.chapters.map((c) => c.blocks.reduce((m, b) => m + b.sentences.length, 0));
 
-  for (const ci of order) {
+// Caches every sentence translation and hover-dictionary entry of the given chapters, one chapter at a
+// time. Everything already cached is skipped, so a stopped run resumes where it left off.
+export async function prepareBook(book: Book, chapters: number[], lang: lr.Lang, perSecond: number, signal: AbortSignal, progress: (p: Progress) => void, done: (chapter: number) => Promise<void>) {
+  const request = pacer(Math.max(0.5, perSecond), signal);
+  const counts = chapterSentences(book);
+  const sentencesTotal = chapters.reduce((n, ci) => n + counts[ci], 0);
+  const p: Progress = { chapter: 0, chapters: chapters.length, sentences: 0, sentencesTotal, words: 0, wordsSeen: 0 };
+  const seen = new Set<string>();
+
+  for (const ci of chapters) {
     p.chapter++;
     const sents = book.chapters[ci].blocks.flatMap((b) => b.sentences);
     const trs = await cacheGetMany<lr.Translated>(sents.map((t) => trKey(t, lang)));
@@ -102,5 +104,6 @@ export async function prepareBook(book: Book, lang: lr.Lang, perSecond: number, 
       p.words++;
       progress(p);
     });
+    await done(ci);
   }
 }

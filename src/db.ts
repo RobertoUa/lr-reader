@@ -12,6 +12,7 @@ export type Meta = {
   // Sentences before pos across the whole book, for the progress figure in the library.
   done: number;
   prepared: number;
+  preparedChapters?: number[];
 };
 
 // idb-keyval keeps one object store per database, so metadata and text get a database each;

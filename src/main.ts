@@ -3,7 +3,8 @@ import { parseEpub, type Book } from "./epub";
 import { addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { drop, enqueue, flush, type Entry } from "./outbox";
-import { prepareBook, type Progress } from "./prepare";
+import * as Look from "./look";
+import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const lib = $("lib"), reader = $("reader"), status = $("status"), books = $("books");
@@ -174,9 +175,9 @@ async function showLibrary() {
     li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
       <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%</div>
       <div class="sub prep"></div></button>
-      <button class="prep-btn">${preparing?.id === m.id ? "Pause" : m.prepared === 100 ? "Update" : "Prepare"}</button>
+      <button class="prep-btn">${preparing?.id === m.id ? "Pause" : "Prepare"}</button>
       <button class="del" aria-label="Delete">Delete</button>`;
-    li.querySelector(".prep-btn")!.addEventListener("click", () => togglePrepare(m.id));
+    li.querySelector(".prep-btn")!.addEventListener("click", () => (preparing?.id === m.id ? preparing.ctl.abort() : askPrepare(m.id)));
     if (preparing?.id === m.id) preparing.line = li.querySelector(".prep") as HTMLElement;
     li.querySelector(".open")!.addEventListener("click", () => openBook(m.id));
     li.querySelector(".del")!.addEventListener("click", async () => {
@@ -197,11 +198,36 @@ function prepText(p: Progress) {
   return `chapter ${p.chapter}/${p.chapters} \u00b7 sentences ${p.sentences}/${p.sentencesTotal} \u00b7 words ${p.words}/${p.wordsSeen}`;
 }
 
-async function togglePrepare(id: string) {
+const prepDlg = $<HTMLDialogElement>("prepare");
+const [prepFrom, prepTo] = [$<HTMLSelectElement>("prep-from"), $<HTMLSelectElement>("prep-to")];
+
+async function askPrepare(id: string) {
+  const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
+  if (!b || !m) return;
+  const counts = chapterSentences(b);
+  const done = new Set(m.preparedChapters || []);
+  const opts = b.chapters.map((c, i) => `<option value="${i}">${i + 1}. ${esc(c.title)}${done.has(i) ? " \u2713" : ""}</option>`).join("");
+  prepFrom.innerHTML = prepTo.innerHTML = opts;
+  prepFrom.value = String(Math.min(m.pos.ch, b.chapters.length - 1));
+  prepTo.value = String(b.chapters.length - 1);
+  const info = () => {
+    const [a, z] = [Number(prepFrom.value), Number(prepTo.value)].sort((x, y) => x - y);
+    const n = counts.slice(a, z + 1).reduce((x, y) => x + y, 0);
+    $("prep-info").textContent = `${z - a + 1} chapters, ${n} sentences. Already prepared chapters are skipped quickly.`;
+  };
+  prepFrom.onchange = prepTo.onchange = info;
+  info();
+  prepDlg.onclose = () => {
+    if (prepDlg.returnValue !== "go") return;
+    const [a, z] = [Number(prepFrom.value), Number(prepTo.value)].sort((x, y) => x - y);
+    startPrepare(id, Array.from({ length: z - a + 1 }, (_, i) => a + i));
+  };
+  prepDlg.showModal();
+}
+
+async function startPrepare(id: string, chapters: number[]) {
   if (preparing) {
-    const was = preparing.id;
     preparing.ctl.abort();
-    if (was === id) return;
     while (preparing) await new Promise((r) => setTimeout(r, 100));
   }
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
@@ -212,18 +238,13 @@ async function togglePrepare(id: string) {
   navigator.storage?.persist?.();
   showLibrary();
   say(`Preparing "${m.title}" for offline. Keep the app open; it resumes where it stopped.`);
-  let chapter = 0;
+  const counts = chapterSentences(b);
   try {
-    await prepareBook(b, lang(), Number(settings().rate) || 4, Math.min(m.pos.ch, b.chapters.length - 1), job.ctl.signal, (p) => {
+    await prepareBook(b, chapters, lang(), Number(settings().rate) || 4, job.ctl.signal, (p) => {
       job.text = prepText(p);
       if (job.line) job.line.textContent = job.text;
-      if (p.chapter !== chapter) {
-        chapter = p.chapter;
-        setPrepared(id, Math.floor((100 * (chapter - 1)) / p.chapters));
-      }
-    });
-    await setPrepared(id, 100);
-    say(`"${m.title}" is ready offline.`);
+    }, (ci) => chapterPrepared(id, ci, counts));
+    say(`"${m.title}": chapters ${chapters[0] + 1}-${chapters[chapters.length - 1] + 1} are ready offline.`);
   } catch (e) {
     const paused = job.ctl.signal.aborted;
     say(paused ? `Paused "${m.title}": ${job.text}` : `Preparing "${m.title}" stopped: ${msg(e)}`, !paused);
@@ -234,9 +255,12 @@ async function togglePrepare(id: string) {
 }
 
 // The reader writes the same record (position), so read it fresh before changing it.
-async function setPrepared(id: string, prepared: number) {
+async function chapterPrepared(id: string, ci: number, counts: number[]) {
   const m = await getMeta(id);
-  if (m) await putMeta({ ...m, prepared });
+  if (!m) return;
+  const chs = [...new Set([...(m.preparedChapters || []), ci])];
+  const total = counts.reduce((a, b) => a + b, 0);
+  await putMeta({ ...m, preparedChapters: chs, prepared: Math.floor((100 * chs.reduce((n, i) => n + counts[i], 0)) / (total || 1)) });
 }
 
 file.addEventListener("change", async () => {
@@ -345,6 +369,7 @@ function showChapter(i: number, sentence: number | "end" = 0) {
     })
     .join("");
   spans = [...content.querySelectorAll<HTMLElement>(".s")];
+  content.lang = settings().sl;
   goto(sentence === "end" ? pages() - 1 : spans[sentence] ? pageOf(spans[sentence]) : 0);
   const shown = ch;
   cacheGetMany<lr.Translated>(sents.map(trKey)).then((all) => {
@@ -454,6 +479,7 @@ let audio: Promise<string> | null = null;
 
 function closeSheet() {
   sheet.hidden = true;
+  lookPanel.hidden = true;
   current?.classList.remove("on");
   current = null;
   selected = [];
@@ -666,7 +692,7 @@ viewport.addEventListener("pointerup", (e) => {
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return turn(dx < 0 ? 1 : -1);
   const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
   if (w) return w === current ? closeSheet() : void openWord(w);
-  if (!sheet.hidden) return closeSheet();
+  if (!sheet.hidden || !lookPanel.hidden) return closeSheet();
   const x = e.clientX / W();
   if (x < 0.3) turn(-1);
   else if (x > 0.7) turn(1);
@@ -682,20 +708,25 @@ addEventListener("resize", relayout);
 toc.addEventListener("change", () => showChapter(Number(toc.value)));
 $("back").addEventListener("click", showLibrary);
 
-function setFont(px: number) {
-  px = Math.max(14, Math.min(34, px));
-  document.documentElement.style.setProperty("--font", `${px}px`);
-  pref("font", String(px));
+const lookPanel = $("look-panel");
+let look = Look.load();
+Look.apply(look);
+$("look").addEventListener("click", () => {
+  if (!lookPanel.hidden) return void (lookPanel.hidden = true);
+  closeSheet();
+  lookPanel.innerHTML = Look.panel(look);
+  lookPanel.hidden = false;
+});
+lookPanel.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest("button");
+  const next = b && Look.change(look, b);
+  if (!next) return;
+  look = next;
+  Look.apply(look);
+  lookPanel.innerHTML = Look.panel(look);
   relayout();
-}
-$("smaller").addEventListener("click", () => setFont(Number(pref("font") || 20) - 2));
-$("bigger").addEventListener("click", () => setFont(Number(pref("font") || 20) + 2));
-$("theme").addEventListener("click", () => {
-  const dark = getComputedStyle(document.documentElement).colorScheme === "dark";
-  document.documentElement.dataset.theme = pref("theme", dark ? "light" : "dark")!;
 });
 
-document.documentElement.style.setProperty("--font", `${pref("font") || 20}px`);
 navigator.storage?.persist?.();
 showLibrary();
 loadWords();

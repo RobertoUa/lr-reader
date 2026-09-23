@@ -9,7 +9,11 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>LR Reader</title>
 <script>
-  try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+  try {
+    const l = JSON.parse(localStorage.getItem("look") || "{}"), r = document.documentElement;
+    if (l.theme) r.dataset.theme = l.theme;
+    for (const [k, v] of Object.entries(l.vars || {})) r.style.setProperty(k, v);
+  } catch {}
 </script>
 </head>
 <body>
@@ -26,14 +30,22 @@
   <header class="bar">
     <button id="back" aria-label="Library">&lsaquo;</button>
     <select id="toc" aria-label="Chapter"></select>
-    <button id="smaller" aria-label="Smaller text">A-</button>
-    <button id="bigger" aria-label="Bigger text">A+</button>
-    <button id="theme" aria-label="Light or dark">&#9680;</button>
+    <button id="look" aria-label="Themes and settings">Aa</button>
   </header>
   <div id="viewport"><article id="content"></article></div>
   <footer><span id="where"></span> <span id="sync"></span></footer>
 </section>
 <div id="sheet" hidden></div>
+<div id="look-panel" class="panel" hidden></div>
+<dialog id="prepare">
+  <form method="dialog">
+    <h2>Prepare for offline</h2>
+    <label>From chapter<select id="prep-from"></select></label>
+    <label>To chapter<select id="prep-to"></select></label>
+    <p id="prep-info" class="sub"></p>
+    <div class="row"><button value="cancel">Cancel</button><button value="go">Prepare</button></div>
+  </form>
+</dialog>
 <dialog id="settings">
   <form method="dialog">
     <h2>Settings</h2>

@@ -40,7 +40,7 @@ Phrases and offline preparation:
 1. Long-press a word (about half a second), drag across more words, release: they turn blue and the
    sheet shows the exact text with punctuation and its translation. Save phrase: appears on Saved
    Items as one phrase. Play reads it.
-2. Library > Prepare: progress line counts chapters, sentences and words; Pause stops at once and
+2. Library > Prepare: pick a chapter range (default: current chapter to the end); progress line counts chapters, sentences and words; Pause stops at once and
    Prepare resumes where it stopped (also after closing the app). It starts with the chapter being
    read and looks words up once per dictionary form. At the default 4 requests/second a 3,000-sentence
    book takes about 15 minutes; Language Reactor rate-limits a little above 5/s.
@@ -48,3 +48,10 @@ Phrases and offline preparation:
    shows "2 to sync". Airplane mode off (or reopen the app): both sync.
 3. After it reaches 100%, airplane mode: any word in the book opens with its translation and the
    sentence translation. Play works only for words already played online.
+
+Appearance:
+
+1. Reader > Aa: text size, themes (Original, Paper, Calm, Focus, Quiet, Night), bold text, justify,
+   line spacing, margins, fonts (Athelas, Charter, Georgia, Iowan, New York, Palatino, San Francisco,
+   Seravek, Times). The page keeps the current sentence on screen; settings survive a relaunch
+   without a flash of the default theme.
