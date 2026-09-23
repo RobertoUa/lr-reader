@@ -22,8 +22,8 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string; rate: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", ...JSON.parse(pref("settings") || "{}") });
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean };
+const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, ...JSON.parse(pref("settings") || "{}") });
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -148,7 +148,9 @@ addEventListener("offline", renderSync);
 
 $("open-settings").addEventListener("click", async () => {
   const s = settings();
-  for (const k of ["email", "token", "sl", "tl", "rate"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked = s.autoSay;
+  fillVoices();
   const est = await navigator.storage?.estimate?.();
   const persisted = await navigator.storage?.persisted?.();
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
@@ -158,8 +160,65 @@ $("open-settings").addEventListener("click", async () => {
 settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4" }));
+  const autoSay = (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked;
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay }));
   loadWords();
+});
+
+// ---- Speech ----
+
+// iOS plays audio only when it starts inside a tap. Language Reactor audio arrives later, so one player
+// is unlocked during the tap with a moment of silence and reused for the real clip.
+const player = new Audio();
+const SILENCE = (() => {
+  const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const tag = (o: number, t: string) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  tag(0, "RIFF"), v.setUint32(4, 36 + n, true), tag(8, "WAVE"), tag(12, "fmt "), v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true), v.setUint16(22, 1, true), v.setUint32(24, 8000, true), v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true), v.setUint16(34, 8, true), tag(36, "data"), v.setUint32(40, n, true);
+  b.fill(128, 44);
+  return "data:audio/wav;base64," + btoa(String.fromCharCode(...b));
+})();
+const systemVoice = () => (settings().voice && speechSynthesis.getVoices().find((v) => v.voiceURI === settings().voice)) || null;
+
+function fillVoices() {
+  const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
+  const sl = settings().sl;
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl));
+  sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(v.name)} (${esc(v.lang)})</option>`).join("");
+  sel.value = settings().voice;
+}
+speechSynthesis.addEventListener?.("voiceschanged", () => settingsDlg.open && fillVoices());
+
+// Must be called synchronously from a tap.
+function speak(text: string, onError: (m: string) => void, voice = systemVoice(), rate = Number(settings().speechRate) || 1) {
+  if (voice) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = voice;
+    u.lang = voice.lang;
+    u.rate = rate;
+    speechSynthesis.speak(u);
+    return;
+  }
+  player.src = SILENCE;
+  player.play().catch(() => {});
+  const sl = settings().sl;
+  cached(`tts|${sl}|${text.toLowerCase()}`, () => lr.tts(text, sl))
+    .then((url) => {
+      player.src = url;
+      player.playbackRate = rate;
+      return player.play();
+    })
+    .catch((e) => onError(`Play: ${msg(e)}`));
+}
+
+$("test-voice").addEventListener("click", (e) => {
+  e.preventDefault();
+  const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
+  const voice = speechSynthesis.getVoices().find((v) => v.voiceURI === sel.value) || null;
+  const rate = Number((settingsDlg.querySelector("[name=speechRate]") as HTMLSelectElement).value) || 1;
+  speak("Hola, \u00bfqu\u00e9 tal? Me gusta mucho leer libros en espa\u00f1ol.", (m) => ($("sync-detail").textContent = m), voice, rate);
 });
 
 // ---- Library ----
@@ -480,7 +539,6 @@ function relayout() {
 // ---- Word sheet ----
 
 let current: HTMLElement | null = null;
-let audio: Promise<string> | null = null;
 
 function closeSheet() {
   sheet.hidden = true;
@@ -498,8 +556,7 @@ async function openWord(w: HTMLElement) {
   const form = w.textContent!;
   const si = Number((w.parentElement as HTMLElement).dataset.s);
   const sl = settings().sl;
-  audio = cached(`tts|${sl}|${form.toLowerCase()}`, () => lr.tts(form, sl));
-  audio.catch(() => {});
+  if (settings().autoSay) speak(form, sheetError);
   sheet.hidden = false;
   sheet.innerHTML = `<h3>${esc(form)}</h3><div class="tr">...</div>`;
   let err = "";
@@ -528,7 +585,7 @@ async function openWord(w: HTMLElement) {
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="more">More</button></div>
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button></div>
     <div id="more"></div>
     <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : ""}</b></div>`;
 }
@@ -578,12 +635,15 @@ async function more() {
   }
 }
 
-async function play() {
-  try {
-    await new Audio(await audio!).play();
-  } catch (e) {
-    sheet.insertAdjacentHTML("beforeend", `<div class="err">Play: ${esc(msg(e))}</div>`);
-  }
+const sheetError = (m: string) => sheet.insertAdjacentHTML("beforeend", `<div class="err">${esc(m)}</div>`);
+
+// The sheet shows either one word (current) or a selected phrase (selected).
+function play(what: "say" | "say-sentence") {
+  const first = current || selected[0];
+  if (!first) return;
+  const si = Number((first.parentElement as HTMLElement).dataset.s);
+  const text = what === "say-sentence" ? sents[si] : current ? current.textContent! : phrase?.text || "";
+  if (text) speak(text, sheetError);
 }
 
 // ---- Phrase selection: long-press a word, drag across others, release ----
@@ -610,8 +670,6 @@ async function openPhrase() {
   const si = Number((sel[0].parentElement as HTMLElement).dataset.s);
   const sl = settings().sl;
   phrase = null;
-  audio = cached(`tts|${sl}|${text.toLowerCase()}`, () => lr.tts(text, sl));
-  audio.catch(() => {});
   sheet.hidden = false;
   sheet.innerHTML = `<h3>${esc(text)}</h3><div class="tr">...</div>`;
   let tr: lr.Translated | undefined;
@@ -629,7 +687,7 @@ async function openPhrase() {
   sheet.innerHTML = `<h3>${esc(text)}</h3>
     <div class="tr">${tr ? esc(tr.tr) : ""}</div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
-    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button></div>
+    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>
     ${trs[si] ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]!.tr)}</b></div>` : ""}`;
 }
 
@@ -651,7 +709,7 @@ sheet.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.act === "save-phrase") savePhrase(b);
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
-  if (b.dataset.act === "say") play();
+  if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
 });
 

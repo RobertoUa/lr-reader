@@ -56,6 +56,13 @@
       <label>My language<input name="tl" size="4"></label>
     </div>
     <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
+    <label>Voice<select name="voice"></select></label>
+    <div class="row">
+      <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>
+      <button id="test-voice" type="button">Test voice</button>
+    </div>
+    <label class="check"><input name="autoSay" type="checkbox"> Say the word when I tap it</label>
+    <p class="sub">More Spanish voices: iOS Settings &gt; Accessibility &gt; Spoken Content &gt; Voices &gt; Spanish (Enhanced and Premium sound best).</p>
     <p id="storage" class="sub"></p>
     <p id="sync-detail" class="sub"></p>
     <div class="row"><button value="cancel">Cancel</button><button value="save" id="save-settings">Save</button></div>

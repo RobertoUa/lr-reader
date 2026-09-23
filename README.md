@@ -56,3 +56,11 @@ Appearance:
    line spacing, margins, fonts (Athelas, Charter, Georgia, Iowan, New York, Palatino, San Francisco,
    Seravek, Times). The page keeps the current sentence on screen; settings survive a relaunch
    without a flash of the default theme.
+
+Speech:
+
+1. Tap a word: it is spoken at once (Settings > "Say the word when I tap it" turns this off).
+2. Sheet: Play (word or selected phrase), Play sentence.
+3. Settings > Voice: Language Reactor, or any Spanish iOS voice (works offline; download Enhanced or
+   Premium voices in iOS Settings > Accessibility > Spoken Content > Voices). Speed 0.6x-1.2x.
+   Test voice plays a sample.
