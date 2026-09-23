@@ -154,7 +154,16 @@ async function outlineEntries(doc: pdfjs.PDFDocumentProxy): Promise<{ page: numb
 }
 
 export async function parsePdf(data: Uint8Array, name: string, lang = "es", onPage?: (n: number, total: number) => void): Promise<Book> {
-  const doc = await pdfjs.getDocument({ data }).promise;
+  const task = pdfjs.getDocument({ data });
+  try {
+    return await readBook(await task.promise, name, lang, onPage);
+  } finally {
+    // Frees the worker's copy of the file (cleanup() alone keeps it).
+    await task.destroy();
+  }
+}
+
+async function readBook(doc: pdfjs.PDFDocumentProxy, name: string, lang: string, onPage?: (n: number, total: number) => void): Promise<Book> {
   let pages: Page[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     pages.push(await readLines(await doc.getPage(i)));
@@ -177,7 +186,6 @@ export async function parsePdf(data: Uint8Array, name: string, lang = "es", onPa
   const kept = chapters.map((c) => ({ ...c, blocks: c.blocks.filter((b) => b.sentences.length) })).filter((c) => c.blocks.length);
 
   const info = ((await doc.getMetadata()).info || {}) as { Title?: string; Author?: string };
-  await doc.cleanup();
   // Some PDFs carry a file name as their title; the imported file's name reads better then.
   const title = info.Title?.trim() && !/\.(pdf|docx?)$/i.test(info.Title.trim()) ? info.Title.trim() : name.replace(/\.pdf$/i, "");
   return { title, author: info.Author?.trim() || "", chapters: kept };

@@ -13,7 +13,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
     signal.addEventListener("abort", () => (clearTimeout(t), r()), { once: true });
   });
 
-// Spaces request starts at the target rate with a few in flight, since each reply takes 0.3-0.8 s.
+// Spaces requests at the target rate with a few in flight, since each reply takes 0.3-0.8 s.
 // The server answers RATE_LIMIT_EXCEEDED a little above 5 requests/s: then halve the rate, wait, and creep back up.
 function pacer(max: number, signal: AbortSignal) {
   let rate = max;
@@ -41,11 +41,21 @@ function pacer(max: number, signal: AbortSignal) {
   };
 }
 
+// Stops handing out items on the first failure, so the other workers do not carry on after it.
 async function pool<T>(items: T[], work: (x: T) => Promise<void>) {
-  let i = 0;
-  await Promise.all(Array.from({ length: PARALLEL }, async () => {
-    while (i < items.length) await work(items[i++]);
-  }));
+  let i = 0, failed = false;
+  await Promise.all(
+    Array.from({ length: PARALLEL }, async () => {
+      while (!failed && i < items.length) {
+        try {
+          await work(items[i++]);
+        } catch (e) {
+          failed = true;
+          throw e;
+        }
+      }
+    }),
+  );
 }
 
 export const chapterSentences = (book: Book) => book.chapters.map((c) => c.blocks.reduce((m, b) => m + b.sentences.length, 0));
@@ -76,7 +86,7 @@ export async function prepareBook(book: Book, chapters: number[], lang: lr.Lang,
     }
     await pool(batches, async (batch) => {
       const texts = batch.map((i) => sents[i]);
-      const res = await request(() => lr.translate(texts, lang));
+      const res = await lr.translate(texts, lang, request);
       await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k], lang), r)));
       batch.forEach((i, k) => (trs[i] = res[k]));
       p.sentences += batch.length;

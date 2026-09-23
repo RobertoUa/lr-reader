@@ -1,4 +1,4 @@
-import { createStore, get, getMany, set, del, values } from "idb-keyval";
+import { createStore, get, getMany, set, del, delMany, values } from "idb-keyval";
 import type { Book } from "./epub";
 
 export type Pos = { ch: number; s: number };
@@ -13,7 +13,9 @@ export type Meta = {
   done: number;
   prepared: number;
   preparedChapters?: number[];
+  bookmarks?: Bookmark[];
 };
+export type Bookmark = { ch: number; s: number; text: string; at: number };
 
 // idb-keyval keeps one object store per database, so metadata and text get a database each;
 // the library lists metadata without loading whole books.
@@ -34,13 +36,18 @@ export async function addBook(book: Book): Promise<Meta> {
   return meta;
 }
 
-export async function deleteBook(id: string) {
-  await del(id, texts);
-  await del(id, metas);
+// Also drops the book's cached sentence translations; dictionary entries and summaries are shared or small.
+export async function deleteBook(id: string, lang: { sl: string; tl: string }) {
+  const book = await getBook(id);
+  await Promise.all([
+    book && delMany(book.chapters.flatMap((c) => c.blocks.flatMap((b) => b.sentences)).map((t) => trKey(t, lang)), cache),
+    del(id, texts),
+    del(id, metas),
+  ]);
 }
 
-// Language Reactor responses (translations, dictionary entries, audio), the saved-word list and
-// the outbox, so everything already looked up works offline.
+// Language Reactor responses (translations, dictionary entries, audio), the saved-word list, the
+// outbox, AI summaries (sum|) and offline English translations (mt|), so what was looked up works offline.
 const cache = createStore("lr-cache", "kv");
 export const cacheGet = <T>(k: string) => get<T>(k, cache);
 export const cacheGetMany = <T>(ks: string[]) => getMany<T>(ks, cache);
@@ -54,7 +61,8 @@ export async function cached<T>(k: string, fetcher: () => Promise<T>): Promise<T
   return v;
 }
 
-export const trKey = (text: string, l: { sl: string; tl: string }) => `tr2|${l.sl}|${l.tl}|${text}`;
+// Sentences over 500 characters were once cached cut off at 500; a new prefix for them skips those entries.
+export const trKey = (text: string, l: { sl: string; tl: string }) => `${text.length > 500 ? "tr3" : "tr2"}|${l.sl}|${l.tl}|${text}`;
 export const hdKey = (form: string, t: { lemma?: { text: string }; pos?: string } | undefined, l: { sl: string; tl: string }) =>
   `hd|${l.sl}|${l.tl}|${form.toLowerCase()}|${t?.lemma?.text || ""}|${t?.pos || ""}`;
 // Preparation looks up one form per dictionary form; offline, other forms fall back to that entry.

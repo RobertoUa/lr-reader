@@ -16,9 +16,10 @@ export default defineConfig({
         // everyone; transformers.js caches the model files itself.
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.endsWith(".wasm"),
+            urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.endsWith(".wasm"),
             handler: "CacheFirst",
-            options: { cacheName: "onnxruntime", cacheableResponse: { statuses: [200] } },
+            // One entry: each onnxruntime upgrade renames the file, and old 27 MB copies should not pile up.
+            options: { cacheName: "onnxruntime", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 1 } },
           },
         ],
       },

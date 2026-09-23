@@ -29,27 +29,50 @@ async function call(url: string, body?: unknown): Promise<any> {
   return j.data;
 }
 
-const joined = (nlp: Token[]) => nlp.map((t) => t.form.text).join("").replace(/\s+/g, " ").trim();
+const norm = (t: string) => t.replace(/\s+/g, " ").trim();
+const joined = (nlp: Token[]) => norm(nlp.map((t) => t.form.text).join(""));
+const MAX = 500;
 
-async function translateOne(text: string, lang: Lang): Promise<Translated> {
-  const d = await call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: text.slice(0, 500) }, ...lang, mode: "NORMAL" });
-  // The server does its own sentence split, so one of our sentences can come back as several.
-  return { tr: (d.mTranslations as string[]).join("").trim(), nlp: (d.nlp as Token[][]).flat() };
+// The endpoint takes at most 500 characters, so longer text is cut at the last space before the limit.
+function chunks(text: string): string[] {
+  const out: string[] = [];
+  let rest = norm(text);
+  while (rest.length > MAX) {
+    const space = rest.lastIndexOf(" ", MAX);
+    const cut = space > 0 ? space : MAX;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut).trim();
+  }
+  return [...out, rest];
+}
+
+export type Pace = <T>(fn: () => Promise<T>) => Promise<T>;
+const unpaced: Pace = (fn) => fn();
+
+async function translateOne(text: string, lang: Lang, pace: Pace): Promise<Translated> {
+  const parts: Translated[] = [];
+  for (const chunk of chunks(text)) {
+    const d = await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: chunk }, ...lang, mode: "NORMAL" }));
+    // The server does its own sentence split, so one of our sentences can come back as several.
+    parts.push({ tr: (d.mTranslations as string[]).join("").trim(), nlp: (d.nlp as Token[][]).flat() });
+  }
+  const space: Token = { form: { text: " " }, form_norm: { text: " " }, pos: "WS" };
+  return { tr: parts.map((p) => p.tr).join(" "), nlp: parts.flatMap((p, i) => (i ? [space, ...p.nlp] : p.nlp)) };
 }
 
 // Several sentences per request, joined with a blank line, which the server keeps as a boundary more
 // reliably than "\n". It still re-splits text itself, so the batch is used only when its pieces line up
-// with ours one to one; otherwise each sentence goes alone.
-export async function translate(texts: string[], lang: Lang): Promise<Translated[]> {
-  if (texts.length > 1 && texts.join("\n\n").length <= 500) {
-    const d = await call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n\n") }, ...lang, mode: "NORMAL" });
+// with ours one to one; otherwise each sentence goes alone. `pace` spaces every request (preparation).
+export async function translate(texts: string[], lang: Lang, pace: Pace = unpaced): Promise<Translated[]> {
+  if (texts.length > 1 && texts.join("\n\n").length <= MAX) {
+    const d = await pace(() => call(`${DICT}base_dict_fullDictTranslate_2`, { input: { type: "TEXT", text: texts.join("\n\n") }, ...lang, mode: "NORMAL" }));
     const nlp = d.nlp as Token[][];
-    if (nlp.length === texts.length && d.mTranslations.length === texts.length && nlp.every((n, i) => joined(n) === texts[i].replace(/\s+/g, " ").trim())) {
+    if (nlp.length === texts.length && d.mTranslations.length === texts.length && nlp.every((n, i) => joined(n) === norm(texts[i]))) {
       return nlp.map((n, i) => ({ tr: String(d.mTranslations[i]).trim(), nlp: n }));
     }
   }
   const out: Translated[] = [];
-  for (const t of texts) out.push(await translateOne(t, lang));
+  for (const t of texts) out.push(await translateOne(t, lang, pace));
   return out;
 }
 
@@ -81,7 +104,6 @@ export async function itemKeys(auth: Auth, sl: string): Promise<Record<string, S
 
 export const saveItem = (auth: Auth, item: object) => items("base_items_saveItem_5", auth, { item, initProposalReviewData: false });
 export const removeItem = (auth: Auth, itemKey: string) => items("base_items_removeItem", auth, { itemKey });
-export const getItems = (auth: Auth, body: object) => items("base_items_getItems_5", auth, body);
 
 // MD5 of the UTF-8 bytes, for phrase keys; WebCrypto has no MD5.
 export function md5(text: string): string {
@@ -141,7 +163,7 @@ export function wordItem(lemma: string, stage: Stage, wordIndex: number, c: Cont
   const freq = t?.diocoFreq ?? "NO_FREQ_DATA";
   return {
     itemType: "WORD",
-    key: `WORD|${lemma.toLowerCase()}|${lang.sl}`,
+    key: wordKey(lemma, lang.sl),
     langCode_G: lang.sl,
     translationLangCode_G: lang.tl,
     tags: [],
@@ -163,12 +185,13 @@ export function wordItem(lemma: string, stage: Stage, wordIndex: number, c: Cont
 }
 
 export const wordKey = (lemma: string, sl: string) => `WORD|${lemma.toLowerCase()}|${sl}`;
+export const phraseKey = (text: string, sl: string) => `PHRASE-YT|${sl}|${md5(text).slice(0, 16)}`;
 
 export function phraseItem(text: string, tr: string, nlp: Token[], c: Context, lang: Lang) {
   const freqs = nlp.map((t) => t.diocoFreq).filter((f): f is number => typeof f === "number");
   return {
     itemType: "PHRASE",
-    key: `PHRASE-YT|${lang.sl}|${md5(text).slice(0, 16)}`,
+    key: phraseKey(text, lang.sl),
     langCode_G: lang.sl,
     translationLangCode_G: lang.tl,
     context: { phrase: { ...phrase(c, text, tr), subtitleTokens: { 0: null, 1: nlp, 2: null } } },

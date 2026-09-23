@@ -1,6 +1,6 @@
 # LR Reader
 
-Offline EPUB reader for iPhone (PWA) with Language Reactor integration. See `PROMPT.md` for the spec.
+Offline EPUB/PDF reader for iPhone (PWA) with Language Reactor integration. See `PROMPT.md` for the spec.
 
     npm install
     npm run dev      # local dev server
@@ -18,7 +18,7 @@ Milestone 1:
 2. Import book (Files app), EPUB or PDF, appears with "read 0%". A PDF needs a text layer; its
    chapters come from bookmarks, "Capitulo N" headings or chapter numbers, else every 10 pages.
 3. Open it: tap right third / swipe left = next page, left third / swipe right = previous.
-   Chapter picker jumps; A-/A+ keeps the current sentence on screen; theme button toggles light/dark.
+   Chapter picker jumps; the Aa panel changes size, theme and font and keeps the current sentence on screen.
 4. Back to library, reopen: same page. Kill the app from the app switcher, relaunch: same page.
 5. Airplane mode on, kill and relaunch: library and book open and page normally.
 6. Delete a book: gone from the list.
@@ -43,15 +43,23 @@ Phrases and offline preparation:
 1. Long-press a word (about half a second), drag across more words, release: they turn blue and the
    sheet shows the exact text with punctuation and its translation. Save phrase: appears on Saved
    Items as one phrase. Play reads it.
-2. Library > Prepare: pick a chapter range or a preset (This chapter, Next 5 chapters, To the end),
-   optionally "Also make chapter summaries" (uses the API key; they then open offline in the AI panel); progress line counts chapters, sentences and words; Pause stops at once and
-   Prepare resumes where it stopped (also after closing the app). It starts with the chapter being
-   read and looks words up once per dictionary form. At the default 4 requests/second a 3,000-sentence
-   book takes about 15 minutes; Language Reactor rate-limits a little above 5/s.
-4. Mark a word and save a phrase in airplane mode, even in a chapter never opened online: footer
-   shows "2 to sync". Airplane mode off (or reopen the app): both sync.
-3. After it reaches 100%, airplane mode: any word in the book opens with its translation and the
+2. Library > Prepare: pick a chapter range or a preset (This chapter, Next 5 chapters, To the end;
+   From defaults to the chapter being read), optionally "Also make chapter summaries" (with the
+   provider last used in the AI panel; they then open offline). The progress line counts chapters,
+   sentences and words; Pause stops at once, and preparing again skips what is already cached. Words
+   are looked up once per dictionary form. At the default 4 requests/second a 3,000-sentence book
+   takes about 15 minutes; Language Reactor rate-limits a little above 5/s.
+3. After a range is prepared, airplane mode: any word in it opens with its translation and the
    sentence translation. Play works only for words already played online.
+4. Mark a word and save a phrase in airplane mode, even in a chapter never opened online: footer
+   shows "2 to sync". Airplane mode off (or reopen the app): both sync. Tapping Learning again while
+   it is still waiting (or while it is being sent) undoes it.
+
+Bookmarks:
+
+1. Reader > star button > Bookmark this page: the footer shows a star on that page. The list shows
+   every bookmark with its chapter and text; tap one to jump there ("Back to where you were" returns).
+   On a bookmarked page the button reads "Remove bookmark here".
 
 Appearance:
 

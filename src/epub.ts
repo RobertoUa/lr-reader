@@ -79,7 +79,8 @@ export function parseEpub(data: Uint8Array, lang = "es"): Book {
   const chapters: Chapter[] = [];
   let cur: Chapter | null = null;
   const start = (title: string) => {
-    if (cur && !cur.blocks.length) cur.title = cur.title || title;
+    // An entry with no text yet (a cover image) gives way to the next entry's title.
+    if (cur && !cur.blocks.length) cur.title = title || cur.title;
     else chapters.push((cur = { title, blocks: [] }));
   };
   for (const ref of opf.querySelectorAll("spine > itemref")) {

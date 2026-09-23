@@ -1,9 +1,9 @@
 import "./style.css";
 import { registerSW } from "virtual:pwa-register";
 import { parseEpub, type Book } from "./epub";
-import { addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { type Bookmark, addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
-import { drop, enqueue, flush, type Entry } from "./outbox";
+import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
 import * as Sum from "./summary";
 import * as MT from "./mt";
@@ -27,7 +27,16 @@ const pref = (k: string, v?: string) => {
 };
 
 type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string };
-const settings = (): Settings => ({ email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(pref("settings") || "{}") });
+// Parsed once per change: mark() asks for it for every word.
+let settingsRaw: string | null = null, settingsVal: Settings;
+const settings = (): Settings => {
+  const raw = pref("settings");
+  if (raw !== settingsRaw || !settingsVal) {
+    settingsRaw = raw;
+    settingsVal = { email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(raw || "{}") };
+  }
+  return settingsVal;
+};
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 const auth = (): lr.Auth | null => {
   const s = settings();
@@ -46,10 +55,14 @@ let outbox: Entry[] = [];
 let syncError = "";
 const lemmaOf = (key: string) => key.split("|")[1];
 
-// Pending marks win over the synced list until they are sent.
-function stageOf(lemma: string): lr.Stage | undefined {
-  const key = lr.wordKey(lemma, settings().sl);
-  const e = outbox.find((x) => x.key === key);
+// Pending marks win over the synced list until they are sent. A mark made offline before the sentence
+// was translated is keyed by the word as written, so it is looked up under that form too.
+// The outbox is replaced, never mutated, so its key index is rebuilt only when it changes.
+let byKeyFor: Entry[] | null = null, byKey = new Map<string, Entry>();
+function stageOf(lemma: string, form = lemma, sl = settings().sl): lr.Stage | undefined {
+  if (byKeyFor !== outbox) (byKey = new Map(outbox.map((e) => [e.key, e]))), (byKeyFor = outbox);
+  const draft = form !== lemma ? byKey.get(lr.wordKey(form, sl)) : undefined;
+  const e = byKey.get(lr.wordKey(lemma, sl)) || (draft?.item?.draft ? draft : undefined);
   if (e) return e.op === "save" ? e.item.learningStage : undefined;
   return synced[lemma];
 }
@@ -67,10 +80,16 @@ function renderSync() {
   $("sync-detail").textContent = outbox.length ? `Outbox: ${outbox.map((e) => `${e.op} ${e.item?.itemType === "PHRASE" ? `"${e.item.phrase ?? e.item.context.phrase.subtitles[1]}"` : lemmaOf(e.key)}${e.error ? ` (${e.error}, ${e.attempts} tries)` : ""}`).join("; ")}` : "Outbox empty.";
 }
 
+let outboxLoaded = false;
 async function loadWords() {
   const s = settings();
+  // In memory the outbox is the truth; reloading it mid-flush would resend what was just sent.
+  if (!outboxLoaded) {
+    outbox = (await cacheGet<Entry[]>("outbox")) || [];
+    outboxLoaded = true;
+  }
+  if (flushing) return;
   synced = (await cacheGet<Record<string, lr.Stage>>(`keys|${s.sl}`)) || {};
-  outbox = (await cacheGet<Entry[]>("outbox")) || [];
   const a = auth();
   syncError = a ? "" : "set Language Reactor email and token in Settings";
   if (a && navigator.onLine) {
@@ -88,12 +107,13 @@ async function loadWords() {
 
 const chatRef = (index: number): lr.Ref => ({ refVersion: 2, source: "CHAT", diocoDocId: null, diocoDocName: null, diocoPlaylistId: null, diocoPlaylistName: null, subtitleIndex: index });
 
-// A made-up USER_TEXT document id may be rejected; CHAT needs no document, so fall back once and remember.
+// A made-up USER_TEXT document id may be rejected (BAD_REQUEST); CHAT needs no document, so fall back
+// once and remember. Other errors (server hiccups, token, rate limit) must not flip it for good.
 async function saveWithFallback(a: lr.Auth, item: any) {
   try {
     await lr.saveItem(a, item);
   } catch (e) {
-    if (item.source !== "USER_TEXT" || /unreachable|TOKEN_ERROR|RATE_LIMIT/.test(msg(e))) throw e;
+    if (item.source !== "USER_TEXT" || !/BAD_REQUEST/.test(msg(e))) throw e;
     const ref = chatRef(item.context.phrase.reference.subtitleIndex);
     await lr.saveItem(a, { ...item, source: "CHAT", context: { ...item.context, phrase: { ...item.context.phrase, reference: ref } } });
     pref("ref", "CHAT");
@@ -101,12 +121,16 @@ async function saveWithFallback(a: lr.Auth, item: any) {
 }
 
 let flushing = false;
+// Keys whose request is on the wire: undoing one of those needs a remove, not just dropping the entry.
+const sending = new Set<string>();
 async function flushOutbox() {
   const a = auth();
-  if (flushing || !a || !outbox.length || !navigator.onLine) return renderSync();
+  const mine = outbox.filter((e) => (e.account ?? a?.email) === a?.email);
+  if (flushing || !a || !mine.length || !navigator.onLine) return renderSync();
   flushing = true;
-  const sent = outbox;
-  const left = await flush(sent, async (e) => {
+  const startIds = new Set(outbox.map((e) => e.id));
+  mine.forEach((e) => sending.add(e.key));
+  const left = await flush(mine, async (e) => {
     if (e.op === "save") {
       const item = e.item.draft ? await resolveDraft(e.item) : e.item;
       await saveWithFallback(a, item);
@@ -116,9 +140,10 @@ async function flushOutbox() {
       delete synced[lemmaOf(e.key)];
     }
   });
-  // Marks made while sending replace whatever was sent or failed for the same word.
-  const added = outbox.filter((e) => !sent.includes(e));
-  outbox = [...left.filter((e) => !added.some((x) => x.key === e.key)), ...added];
+  outbox = afterFlush(outbox, mine, left);
+  // Only marks made during this flush start another one; failures wait for the next trigger.
+  const added = outbox.filter((e) => !startIds.has(e.id));
+  sending.clear();
   flushing = false;
   await Promise.all([cacheSet("outbox", outbox), cacheSet(`keys|${settings().sl}`, synced)]);
   renderSync();
@@ -135,10 +160,10 @@ document.addEventListener("visibilitychange", () => document.visibilityState ===
 type Draft = { draft: true; itemType: "WORD" | "PHRASE"; learningStage: lr.Stage; offset?: number; phrase?: string; text: string; prev: string | null; next: string | null; ref: lr.Ref };
 
 async function resolveDraft(d: Draft) {
-  const tr = await cached(trKey(d.text), async () => (await lr.translate([d.text], lang()))[0]);
+  const tr = await translateCached(d.text);
   const ctx: lr.Context = { ...d, tr: tr.tr, nlp: tr.nlp };
   if (d.itemType === "PHRASE") {
-    const p = await cached(trKey(d.phrase!), async () => (await lr.translate([d.phrase!], lang()))[0]);
+    const p = await translateCached(d.phrase!);
     return lr.phraseItem(d.phrase!, p.tr, p.nlp, ctx, lang());
   }
   const i = tokenAt(tr.nlp, d.text, d.offset!);
@@ -303,7 +328,7 @@ async function showLibrary() {
     li.querySelector(".del")!.addEventListener("click", async () => {
       if (!confirm(`Delete "${m.title}" and all its data?`)) return;
       if (preparing?.id === m.id) preparing.ctl.abort();
-      await deleteBook(m.id);
+      await deleteBook(m.id, lang());
       showLibrary();
     });
     books.append(li);
@@ -429,6 +454,7 @@ let meta: Meta;
 let ch = 0;
 let page = 0;
 let spans: HTMLElement[] = [];
+let words: HTMLElement[] = [];
 // Sentences before each chapter, for whole-book progress and the sentence index sent to Language Reactor.
 let offsets: number[] = [];
 // Current chapter's sentences and their cached translations, by index within the chapter.
@@ -473,17 +499,29 @@ function lemmaFor(w: HTMLElement): { lemma: string; token?: lr.Token; index: num
   return { lemma: (token?.lemma?.text || w.textContent!).toLowerCase(), token, index: i };
 }
 
+// Dictionary forms of a sentence's words, worked out once per translation (mark() runs on every tap).
+const lemmaCache = new WeakMap<lr.Translated, string[]>();
+function sentenceLemmas(si: number, ws: HTMLElement[]): string[] {
+  const tr = trs[si];
+  const forms = () => ws.map((w) => w.textContent!.toLowerCase());
+  if (!tr) return forms();
+  let l = lemmaCache.get(tr);
+  if (!l) lemmaCache.set(tr, (l = ws.map((w) => lemmaFor(w).lemma)));
+  return l.length === ws.length ? l : forms();
+}
+
 function mark() {
   if (reader.hidden) return;
-  for (const w of content.querySelectorAll<HTMLElement>(".w")) {
-    const { lemma } = lemmaFor(w);
-    w.classList.toggle("learning", stageOf(lemma) === "LEARNING");
-  }
+  const sl = settings().sl;
+  spans.forEach((span, si) => {
+    const ws = [...span.children] as HTMLElement[];
+    const lemmas = sentenceLemmas(si, ws);
+    ws.forEach((w, k) => w.classList.toggle("learning", stageOf(lemmas[k], w.textContent!.toLowerCase(), sl) === "LEARNING"));
+  });
 }
 
 async function openBook(id: string) {
-  returnTo = null;
-  $("return").hidden = true;
+  clearReturn();
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
   if (!b || !m) return say("Book not found in storage.", true);
   book = b;
@@ -503,8 +541,13 @@ async function openBook(id: string) {
   showChapter(Math.min(meta.pos.ch, book.chapters.length - 1), meta.pos.s);
 }
 
+// Bumped whenever the book or chapter on screen changes; late async results for an older view are dropped.
+let view = 0;
+const goToSentence = (si: number) => goto(spans[si] ? pageOf(spans[si]) : 0);
+
 function showChapter(i: number, sentence: number | "end" = 0) {
   closeSheet();
+  view++;
   ch = i;
   toc.value = String(i);
   sents = book.chapters[i].blocks.flatMap((b) => b.sentences);
@@ -518,11 +561,13 @@ function showChapter(i: number, sentence: number | "end" = 0) {
     })
     .join("");
   spans = [...content.querySelectorAll<HTMLElement>(".s")];
+  words = [...content.querySelectorAll<HTMLElement>(".w")];
   content.lang = settings().sl;
-  goto(sentence === "end" ? pages() - 1 : spans[sentence] ? pageOf(spans[sentence]) : 0);
-  const shown = ch;
+  if (sentence === "end") goto(pages() - 1);
+  else goToSentence(sentence);
+  const shown = view;
   cacheGetMany<lr.Translated>(sents.map(trKey)).then((all) => {
-    if (ch !== shown) return;
+    if (view !== shown) return;
     trs = all.map((v, k) => v ?? trs[k]);
     loaded = true;
     mark();
@@ -568,9 +613,10 @@ function goto(p: number) {
   const s = anchor();
   meta.pos = { ch, s };
   meta.done = offsets[ch] + s;
-  where.textContent = `${book.chapters[ch].title} \u00b7 ${page + 1}/${pages()}${bookPage()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
+  where.textContent = `${pageBookmark() ? "\u2605 " : ""}${book.chapters[ch].title} \u00b7 ${page + 1}/${pages()}${bookPage()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
   const { id, pos, done } = meta;
-  getMeta(id).then((m) => m && putMeta({ ...m, pos, done }));
+  const bookmarks = meta.bookmarks;
+  getMeta(id).then((m) => m && putMeta({ ...m, pos, done, bookmarks }));
   translatePage();
 }
 
@@ -585,7 +631,7 @@ async function translatePage() {
   for (let i = Math.max(0, firstFrom(page) - 1); i < spans.length && pageOf(spans[i]) <= page + 1; i++) if (!trs[i]) want.push(i);
   if (!want.length) return;
   translating = true;
-  const shown = ch;
+  const shown = view;
   try {
     while (want.length) {
       const batch: number[] = [];
@@ -595,7 +641,7 @@ async function translatePage() {
       const texts = batch.map((i) => sents[i]);
       const res = await lr.translate(texts, lang());
       await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k]), r)));
-      if (ch !== shown) break;
+      if (view !== shown) break;
       res.forEach((r, k) => (trs[batch[k]] = r));
     }
     mark();
@@ -610,17 +656,19 @@ async function translatePage() {
   }
 }
 
+const translateCached = (text: string) => cached(trKey(text), async () => (await lr.translate([text], lang()))[0]);
+
 async function ensureTr(si: number): Promise<lr.Translated> {
   if (trs[si]) return trs[si]!;
-  const text = sents[si], shown = ch;
-  const [r] = await lr.translate([text], lang());
-  await cacheSet(trKey(text), r);
-  if (ch === shown) trs[si] = r;
+  const shown = view;
+  const r = await translateCached(sents[si]);
+  if (view === shown) trs[si] = r;
   return r;
 }
 
 function turn(dir: 1 | -1) {
   closeSheet();
+  clearReturn();
   if (dir > 0 && page >= pages() - 1) {
     if (ch < book.chapters.length - 1) showChapter(ch + 1);
   } else if (dir < 0 && page === 0) {
@@ -643,12 +691,11 @@ let current: HTMLElement | null = null;
 
 function closeSheet() {
   sheet.hidden = true;
-  summaryPanel.hidden = true;
-  lookPanel.hidden = true;
+  document.querySelectorAll<HTMLElement>(".panel").forEach((p) => (p.hidden = true));
   current?.classList.remove("on");
   current = null;
+  selected.forEach((x) => x.classList.remove("sel"));
   selected = [];
-  content.querySelectorAll(".w.sel").forEach((x) => x.classList.remove("sel"));
 }
 
 async function openWord(w: HTMLElement) {
@@ -657,7 +704,6 @@ async function openWord(w: HTMLElement) {
   w.classList.add("on");
   const form = w.textContent!;
   const si = Number((w.parentElement as HTMLElement).dataset.s);
-  const sl = settings().sl;
   if (settings().autoSay) speak(form, sheetError);
   sheet.hidden = false;
   sheet.innerHTML = `<h3>${esc(form)}</h3><div class="tr">...</div>`;
@@ -718,14 +764,18 @@ function setStage(stage: lr.Stage) {
   if (!w) return;
   const si = Number((w.parentElement as HTMLElement).dataset.s);
   const { lemma, index } = lemmaFor(w);
-  const key = lr.wordKey(lemma, settings().sl);
-  const next = stageOf(lemma) === stage ? undefined : stage;
+  const form = w.textContent!.toLowerCase();
+  const { sl, email } = settings();
+  const key = lr.wordKey(lemma, sl);
+  const next = stageOf(lemma, form) === stage ? undefined : stage;
+  // An offline draft for this word, keyed by its written form, is replaced by whatever happens now.
+  if (form !== lemma) outbox = drop(outbox, lr.wordKey(form, sl));
   if (!next) {
-    outbox = lemma in synced ? enqueue(outbox, "remove", key) : drop(outbox, key);
+    outbox = lemma in synced || sending.has(key) ? enqueue(outbox, "remove", key, email) : drop(outbox, key);
   } else {
     const tr = trs[si];
     const draft: Draft = { draft: true, itemType: "WORD", learningStage: next, offset: Number(w.dataset.o), ...where0(si) };
-    outbox = enqueue(outbox, "save", key, tr && index >= 0 ? lr.wordItem(lemma, next, index, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft);
+    outbox = enqueue(outbox, "save", key, email, tr && index >= 0 ? lr.wordItem(lemma, next, index, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft);
   }
   cacheSet("outbox", outbox);
   sheet.querySelectorAll<HTMLElement>("[data-stage]").forEach((b) => b.classList.toggle("on", b.dataset.stage === next));
@@ -737,19 +787,28 @@ function setStage(stage: lr.Stage) {
 // ---- Examples and search: sentences from the whole book ----
 
 type Found = { ci: number; si: number; text: string };
-let bookSents: Found[] = [];
+let bookSents: (Found & { folded?: string })[] = [];
 const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const reEsc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const wordRe = (words: string[]) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(${words.map(reEsc).join("|")})(?![\\p{L}\\p{M}\\p{N}])`, "giu");
 
-// A jump from an example or a search result leaves a way back to the sentence being read.
+// A jump from an example, a search result or a bookmark leaves a way back to the sentence being read,
+// until the reader turns a page or picks a chapter, which means carrying on from the new place.
 let returnTo: { ch: number; s: number } | null = null;
+function clearReturn() {
+  returnTo = null;
+  $("return").hidden = true;
+}
+function show(ci: number, si: number) {
+  if (ci === ch) goToSentence(si);
+  else showChapter(ci, si);
+}
 function jumpTo(ci: number, si: number) {
   closeSheet();
   $("search-panel").hidden = true;
   returnTo ||= { ch, s: meta.pos.s };
   $("return").hidden = false;
-  showChapter(ci, si);
+  show(ci, si);
   const el = spans[si];
   el?.classList.add("flash");
   setTimeout(() => el?.classList.remove("flash"), 2500);
@@ -763,9 +822,8 @@ function foundList(hits: (Found & { tr?: string })[], mark: (text: string) => st
 
 $("return").addEventListener("click", () => {
   const back = returnTo;
-  returnTo = null;
-  $("return").hidden = true;
-  if (back) showChapter(back.ch, back.s);
+  clearReturn();
+  if (back) show(back.ch, back.s);
 });
 
 document.addEventListener("click", (e) => {
@@ -821,7 +879,7 @@ $("search-input").addEventListener("input", () => {
     const box = $("search-results");
     if (q.length < 2) return void (box.innerHTML = "");
     // Accent- and case-insensitive; folding keeps lengths for precomposed text, so offsets map back.
-    const hits = bookSents.filter((x) => fold(x.text).includes(q));
+    const hits = bookSents.filter((x) => (x.folded ??= fold(x.text)).includes(q));
     const mark = (t: string) => {
       const f = fold(t), i = f.indexOf(q);
       return f.length === t.length && i >= 0 ? esc(t.slice(0, i)) + `<b>${esc(t.slice(i, i + q.length))}</b>` + esc(t.slice(i + q.length)) : esc(t);
@@ -830,7 +888,40 @@ $("search-input").addEventListener("input", () => {
   }, 250);
 });
 
-// ---- Summaries from Claude ----
+// ---- Bookmarks ----
+
+const bookmarksPanel = $("bookmarks-panel");
+// A bookmark belongs to the page its sentence starts on (or, on a page where no sentence starts, the one
+// running through it).
+function pageBookmark(): Bookmark | undefined {
+  const f = firstFrom(page), next = firstFrom(page + 1);
+  return (meta.bookmarks || []).find((b) => b.ch === ch && ((b.s >= f && b.s < next) || (f === next && b.s === f - 1)));
+}
+function renderBookmarks() {
+  const here = pageBookmark();
+  $("bookmark-toggle").textContent = here ? "Remove bookmark here" : "Bookmark this page";
+  const list = [...(meta.bookmarks || [])].sort((a, b) => a.ch - b.ch || a.s - b.s);
+  $("bookmark-list").innerHTML = list.length
+    ? foundList(list.map((b) => ({ ci: b.ch, si: b.s, text: b.text, tr: new Date(b.at).toLocaleDateString() })), esc)
+    : `<div class="sub">No bookmarks yet.</div>`;
+}
+$("bookmarks").addEventListener("click", () => {
+  const open = bookmarksPanel.hidden;
+  closeSheet();
+  if (!open) return;
+  renderBookmarks();
+  bookmarksPanel.hidden = false;
+});
+$("bookmark-toggle").addEventListener("click", () => {
+  const here = pageBookmark();
+  const s = anchor();
+  const next = here ? (meta.bookmarks || []).filter((b) => b !== here) : [...(meta.bookmarks || []), { ch, s, text: sents[s].slice(0, 140), at: Date.now() }];
+  meta.bookmarks = next;
+  goto(page);
+  renderBookmarks();
+});
+
+// ---- Summaries ----
 
 const summaryPanel = $("summary-panel"), summaryOut = $("summary-out"), sumLang = $<HTMLSelectElement>("sum-lang");
 $("summary").addEventListener("click", () => {
@@ -897,7 +988,7 @@ summaryPanel.addEventListener("click", async (e) => {
   const ask: Sum.Ask = { text: sumScope === "page" ? pageText() : chapterText(), scope: sumScope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value };
   const how = b.dataset.sum!;
   if (!how.startsWith("key-")) {
-    // No key: hand the request to the Claude or ChatGPT app. Also copied, in case it is too long for a link.
+    // Key-free path: hand the request to the Claude or ChatGPT app; also copied in case it is too long for a link.
     const text = Sum.chatText(ask);
     navigator.clipboard?.writeText(text).catch(() => {});
     if (how === "share") return void navigator.share?.({ text }).catch(() => {});
@@ -956,10 +1047,12 @@ let selected: HTMLElement[] = [];
 let phrase: { text: string; tr: string; nlp: lr.Token[]; si: number } | null = null;
 
 function selectRange(from: HTMLElement, to: HTMLElement) {
-  const all = [...content.querySelectorAll<HTMLElement>(".w")];
-  const [a, b] = [all.indexOf(from), all.indexOf(to)].sort((x, y) => x - y);
-  selected = all.slice(a, b + 1);
-  all.forEach((x, i) => x.classList.toggle("sel", i >= a && i <= b));
+  const [a, b] = [words.indexOf(from), words.indexOf(to)].sort((x, y) => x - y);
+  const next = words.slice(a, b + 1);
+  const keep = new Set(next);
+  selected.forEach((x) => keep.has(x) || x.classList.remove("sel"));
+  next.forEach((x) => x.classList.add("sel"));
+  selected = next;
 }
 
 async function openPhrase() {
@@ -979,7 +1072,7 @@ async function openPhrase() {
   let tr: lr.Translated | undefined;
   let err = "";
   try {
-    tr = await cached(trKey(text), async () => (await lr.translate([text], lang()))[0]);
+    tr = await translateCached(text);
     await ensureTr(si);
   } catch (e) {
     err = `${msg(e)}. Save phrase still works; it is sent when you are back online.`;
@@ -994,7 +1087,7 @@ async function openPhrase() {
     if (selected !== sel) return;
   }
   phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
-  const key = `PHRASE-YT|${sl}|${lr.md5(text).slice(0, 16)}`;
+  const key = lr.phraseKey(text, sl);
   const queued = outbox.some((x) => x.key === key);
   sheet.innerHTML = `<h3>${esc(text)}</h3>
     <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
@@ -1008,7 +1101,7 @@ function savePhrase(b: HTMLElement) {
   const tr = trs[phrase.si];
   const draft: Draft = { draft: true, itemType: "PHRASE", learningStage: "LEARNING", phrase: phrase.text, ...where0(phrase.si) };
   const item = tr && phrase.nlp.length ? lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft;
-  outbox = enqueue(outbox, "save", `PHRASE-YT|${settings().sl}|${lr.md5(phrase.text).slice(0, 16)}`, item);
+  outbox = enqueue(outbox, "save", lr.phraseKey(phrase.text, settings().sl), settings().email, item);
   cacheSet("outbox", outbox);
   b.classList.add("on");
   b.textContent = "Saved";
@@ -1068,7 +1161,7 @@ viewport.addEventListener("pointerup", (e) => {
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return turn(dx < 0 ? 1 : -1);
   const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
   if (w) return w === current ? closeSheet() : void openWord(w);
-  if (!sheet.hidden || !lookPanel.hidden || !searchPanel.hidden || !summaryPanel.hidden) return closeSheet(), void (searchPanel.hidden = true);
+  if (!sheet.hidden || document.querySelector(".panel:not([hidden])")) return closeSheet();
   const x = e.clientX / W();
   if (x < 0.3) turn(-1);
   else if (x > 0.7) turn(1);
@@ -1081,7 +1174,10 @@ document.addEventListener("keydown", (e) => {
 });
 addEventListener("resize", relayout);
 
-toc.addEventListener("change", () => showChapter(Number(toc.value)));
+toc.addEventListener("change", () => {
+  clearReturn();
+  showChapter(Number(toc.value));
+});
 $("back").addEventListener("click", showLibrary);
 
 const lookPanel = $("look-panel");

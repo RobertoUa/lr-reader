@@ -30,6 +30,7 @@
   <header class="bar">
     <button id="back" aria-label="Library">&lsaquo;</button>
     <select id="toc" aria-label="Chapter"></select>
+    <button id="bookmarks" aria-label="Bookmarks">&#9734;</button>
     <button id="search" aria-label="Search">&#9906;</button>
     <button id="summary" aria-label="Summary">AI</button>
     <button id="look" aria-label="Themes and settings">Aa</button>
@@ -47,6 +48,10 @@
     <button data-sum="chatgpt">Open in ChatGPT</button><button data-sum="share">Share&hellip;</button></div>
   <div id="summary-out"></div>
 </div>
+<div id="bookmarks-panel" class="panel" hidden>
+  <button id="bookmark-toggle"></button>
+  <div id="bookmark-list"></div>
+</div>
 <div id="search-panel" class="panel" hidden>
   <input id="search-input" type="search" placeholder="Search this book" autocomplete="off" autocapitalize="off" spellcheck="false">
   <div id="search-results"></div>
@@ -58,7 +63,7 @@
     <label>From chapter<select id="prep-from"></select></label>
     <label>To chapter<select id="prep-to"></select></label>
     <p id="prep-info" class="sub"></p>
-    <label class="check"><input id="prep-sum" type="checkbox"> Also make chapter summaries (uses the API key from Settings)</label>
+    <label class="check"><input id="prep-sum" type="checkbox"> Also make chapter summaries (with the provider last used in the AI panel)</label>
     <div class="row"><button value="cancel">Cancel</button><button value="go">Prepare</button></div>
   </form>
 </dialog>
@@ -98,7 +103,7 @@
     <p class="sub">More Spanish voices: iOS Settings &gt; Accessibility &gt; Spoken Content &gt; Voices &gt; Spanish (Enhanced and Premium sound best).</p>
     <p id="storage" class="sub"></p>
     <p id="sync-detail" class="sub"></p>
-    <div class="row"><button value="cancel">Cancel</button><button value="save" id="save-settings">Save</button></div>
+    <div class="row"><button value="cancel">Cancel</button><button value="save">Save</button></div>
   </form>
 </dialog>
 <script type="module" src="/src/main.ts"></script>

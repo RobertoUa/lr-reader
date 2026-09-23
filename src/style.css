@@ -46,7 +46,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #content blockquote { margin: 0 0 0.6em 1.2em; font-style: italic; }
 #content p.li { text-indent: 0; }
 #content p.li::before { content: "\2022  "; }
-#reader > footer { padding: 6px 16px calc(env(safe-area-inset-bottom) + 6px); color: var(--muted); font-size: 13px; text-align: center; }
+#reader > footer { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 6px 16px calc(env(safe-area-inset-bottom) + 6px); color: var(--muted); font-size: 13px; text-align: center; }
 
 #sync.error { color: #d33; }
 .w { border-radius: 4px; }
