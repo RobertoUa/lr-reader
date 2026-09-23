@@ -13,7 +13,7 @@ Language Reactor now answers this app's requests with decoy data instead of erro
 | `base_dict_getFullDict_8` ("More") | Decoy (scrambled word, empty entries) |
 | `base_dict_getHoverDict_8` (word translation) | Still real, probably CDN-cached |
 | `base_dict_getDictTTS_3` (speech) | Still works |
-| Items API (word list, save/remove) | Not re-tested after the block |
+| Items API (word list, save/remove) | Works (save, list, remove round trip after the block) |
 
 This is Language Reactor stating it does not want third-party apps using its data. Most likely triggered
 by the request volume from one machine during development (tests, "Prepare"). Do not try to get around
@@ -72,7 +72,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
 
 - Offline English translation runs on the main thread (a short freeze on first use on iPhone).
 - Offline drafts are keyed by the written form until they sync (handled, not re-keyed).
-- Email/password login to fetch the token: not investigated yet.
+- Email/password login to fetch the token: not pursued (the account signs in with Google; the bookmarklet covers it).
 - QA in real Chrome was interrupted by the Language Reactor block.
 - No iPhone test yet: first-tap audio, Home Screen install, storage persistence.
 
