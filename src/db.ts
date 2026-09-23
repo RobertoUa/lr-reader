@@ -1,4 +1,4 @@
-import { createStore, get, set, del, values } from "idb-keyval";
+import { createStore, get, getMany, set, del, values } from "idb-keyval";
 import type { Book } from "./epub";
 
 export type Pos = { ch: number; s: number };
@@ -36,4 +36,19 @@ export async function addBook(book: Book): Promise<Meta> {
 export async function deleteBook(id: string) {
   await del(id, texts);
   await del(id, metas);
+}
+
+// Language Reactor responses (translations, dictionary entries, audio), the saved-word list and
+// the outbox, so everything already looked up works offline.
+const cache = createStore("lr-cache", "kv");
+export const cacheGet = <T>(k: string) => get<T>(k, cache);
+export const cacheGetMany = <T>(ks: string[]) => getMany<T>(ks, cache);
+export const cacheSet = (k: string, v: unknown) => set(k, v, cache);
+
+export async function cached<T>(k: string, fetcher: () => Promise<T>): Promise<T> {
+  const hit = await cacheGet<T>(k);
+  if (hit !== undefined) return hit;
+  const v = await fetcher();
+  await cacheSet(k, v);
+  return v;
 }

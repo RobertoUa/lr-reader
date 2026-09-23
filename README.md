@@ -21,3 +21,16 @@ Milestone 1:
 4. Back to library, reopen: same page. Kill the app from the app switcher, relaunch: same page.
 5. Airplane mode on, kill and relaunch: library and book open and page normally.
 6. Delete a book: gone from the list.
+
+Words and Language Reactor:
+
+1. Library > Settings: enter your Language Reactor email and token (the `diocoToken` the browser
+   extension sends in its request bodies). Footer error about Settings disappears.
+2. Open a book: words from your LR list at stage LEARNING are orange, including conjugated forms
+   (they match through the dictionary form once the page has been translated, a second or so).
+3. Tap a word: sheet shows the word, dictionary form and part of speech, translations, the sentence
+   and its translation. More = full dictionary entry, Play = pronunciation.
+4. Learning: the word turns orange, footer shows "1 to sync" briefly, then nothing. Check it on
+   languagereactor.com Saved Items. Tap Learning again: it is removed there too.
+5. Airplane mode: tap a word you tapped before: same sheet from cache. Mark a word: footer shows
+   "1 to sync". Airplane mode off: it syncs and appears on Saved Items.

@@ -16,6 +16,7 @@
 <main id="lib">
   <header class="bar">
     <h1>LR Reader</h1>
+    <button id="open-settings" aria-label="Settings">Settings</button>
     <label class="btn">Import EPUB<input id="file" type="file" accept=".epub,application/epub+zip" hidden></label>
   </header>
   <p id="status" role="status"></p>
@@ -30,8 +31,23 @@
     <button id="theme" aria-label="Light or dark">&#9680;</button>
   </header>
   <div id="viewport"><article id="content"></article></div>
-  <footer id="where"></footer>
+  <footer><span id="where"></span> <span id="sync"></span></footer>
 </section>
+<div id="sheet" hidden></div>
+<dialog id="settings">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label>Language Reactor email<input name="email" type="email" autocomplete="off"></label>
+    <label>Token (diocoToken)<input name="token" type="password" autocomplete="off"></label>
+    <div class="row">
+      <label>Book language<input name="sl" size="4"></label>
+      <label>My language<input name="tl" size="4"></label>
+    </div>
+    <p id="storage" class="sub"></p>
+    <p id="sync-detail" class="sub"></p>
+    <div class="row"><button value="cancel">Cancel</button><button value="save" id="save-settings">Save</button></div>
+  </form>
+</dialog>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

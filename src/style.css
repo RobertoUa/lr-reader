@@ -40,4 +40,32 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #content blockquote { margin: 0 0 0.6em 1.2em; font-style: italic; }
 #content p.li { text-indent: 0; }
 #content p.li::before { content: "\2022  "; }
-#where { padding: 6px 16px calc(env(safe-area-inset-bottom) + 6px); color: var(--muted); font-size: 13px; text-align: center; }
+#reader > footer { padding: 6px 16px calc(env(safe-area-inset-bottom) + 6px); color: var(--muted); font-size: 13px; text-align: center; }
+
+#sync.error { color: #d33; }
+.w { border-radius: 4px; }
+.w.learning { background: rgba(255, 140, 0, 0.33); }
+.w.on { background: rgba(80, 150, 255, 0.4); }
+
+#sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 60vh; overflow-y: auto; z-index: 5;
+  background: var(--btn); color: var(--fg); border-radius: 16px 16px 0 0; box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); font-size: 17px; line-height: 1.4; }
+#sheet h3 { margin: 0; font-size: 22px; }
+#sheet .lemma { color: var(--muted); font-size: 15px; margin-top: 2px; }
+#sheet .tr { margin: 8px 0; font-size: 18px; }
+#sheet .sent { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+#sheet .sent b { color: var(--fg); font-weight: 400; display: block; margin-top: 4px; }
+#sheet .pos { margin-top: 8px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+#sheet .err { color: #d33; margin: 8px 0; }
+#sheet .act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+#sheet .act button { background: var(--bg); }
+#sheet .act button.on { background: var(--accent); color: #fff; }
+
+dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; width: min(92vw, 420px); }
+dialog h2 { margin-top: 0; }
+dialog label { display: block; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
+dialog input { display: block; width: 100%; margin-top: 4px; font-size: 16px; padding: 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--btn); color: var(--fg); }
+dialog .row { display: flex; gap: 12px; justify-content: flex-end; }
+dialog .row label { flex: 1; }
+.sub { color: var(--muted); font-size: 14px; }
