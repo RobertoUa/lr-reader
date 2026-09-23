@@ -11,9 +11,9 @@ type Page = Line[];
 type Para = { text: string; page: number; head?: string };
 
 const median = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[xs.length >> 1] : 0);
-const ENDS = /[.!?:;…»"”')\]]$/;
+const ENDS = /[.!?:;\u2026\u00bb"\u201d')\]]$/;
 const NUM = /^\d{1,3}$/;
-const HEADING = /^(Cap[ií]tulo|CAP[IÍ]TULO|Chapter|CHAPTER|Parte|PARTE|Part|PART)\s+(\d+|[IVXLC]+\b|\p{Lu})/u;
+const HEADING = /^(Cap[i\u00ed]tulo|CAP[I\u00cd]TULO|Chapter|CHAPTER|Parte|PARTE|Part|PART)\s+(\d+|[IVXLC]+\b|\p{Lu})/u;
 const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 async function readLines(page: pdfjs.PDFPageProxy): Promise<Page> {
