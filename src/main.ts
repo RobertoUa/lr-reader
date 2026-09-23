@@ -269,7 +269,12 @@ file.addEventListener("change", async () => {
   if (!f) return;
   say(`Importing ${f.name}...`);
   try {
-    const book = parseEpub(new Uint8Array(await f.arrayBuffer()), settings().sl);
+    const data = new Uint8Array(await f.arrayBuffer());
+    const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+    // pdf.js is large, so it loads only when a PDF is imported.
+    const book = isPdf
+      ? await (await import("./pdf")).parsePdf(data, f.name, settings().sl, (n, total) => say(`Importing ${f.name}: page ${n}/${total}...`))
+      : parseEpub(data, settings().sl);
     const m = await addBook(book);
     say(`Imported "${m.title}": ${book.chapters.length} chapters, ${m.sentences} sentences.`);
     showLibrary();

@@ -15,7 +15,8 @@ Source to "GitHub Actions" once).
 Milestone 1:
 
 1. Open the Pages URL in Safari, Share > Add to Home Screen, launch from the icon (no Safari bars).
-2. Import EPUB (Files app), book appears with "read 0%".
+2. Import book (Files app), EPUB or PDF, appears with "read 0%". A PDF needs a text layer; its
+   chapters come from bookmarks, "Capitulo N" headings or chapter numbers, else every 10 pages.
 3. Open it: tap right third / swipe left = next page, left third / swipe right = previous.
    Chapter picker jumps; A-/A+ keeps the current sentence on screen; theme button toggles light/dark.
 4. Back to library, reopen: same page. Kill the app from the app switcher, relaunch: same page.

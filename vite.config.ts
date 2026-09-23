@@ -8,6 +8,8 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["apple-touch-icon.png"],
+      // pdf.js ships its worker as .mjs; cache it too so PDF import works offline.
+      workbox: { globPatterns: ["**/*.{js,mjs,css,html,png,webmanifest}"], maximumFileSizeToCacheInBytes: 3 * 1024 * 1024 },
       manifest: {
         name: "LR Reader",
         short_name: "LR Reader",

@@ -4,7 +4,7 @@ import * as lr from "./lr";
 
 export type Progress = { chapter: number; chapters: number; sentences: number; sentencesTotal: number; words: number; wordsSeen: number };
 
-const WORD = /^[\p{L}\p{M}\p{N}]+(?:['’-][\p{L}\p{M}\p{N}]+)*$/u;
+const WORD = /^[\p{L}\p{M}\p{N}]+(?:['\u2019-][\p{L}\p{M}\p{N}]+)*$/u;
 const PARALLEL = 4;
 
 const sleep = (ms: number, signal: AbortSignal) =>
