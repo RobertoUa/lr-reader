@@ -23,7 +23,17 @@ The app now treats a decoy translation as an error ("Language Reactor returned n
 instead of caching it. Translations cached before the block are real; any cached during the last
 hours of 2026-09-23 may be decoys.
 
-### Options
+### Decision (2026-09-23): option 2, selectable
+
+Settings > "Translations from": Language Reactor, ChatGPT (OpenAI key) or Claude (Claude key), with a
+model per provider (defaults GPT-5.4 mini, Claude Opus 5). With an AI source, one request per batch of
+sentences returns the translation plus each word's dictionary form, POS and glosses (cached as the
+word lookups, so taps and Prepare need no per-word request); "More" asks the model for a dictionary
+entry. Language Reactor is still used for the account: word list, highlighting, saving words and
+phrases. Verified: Language Reactor accepts saved words whose context tokens were built by the app
+(save, list, remove round trip).
+
+### Options considered
 
 1. Translations and dictionary from a provider the user pays for (OpenAI key already in Settings, or
    Claude): sentence translation, dictionary form and part of speech per word, glosses. Works for

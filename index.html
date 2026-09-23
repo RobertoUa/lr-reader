@@ -88,6 +88,9 @@
       <label>My language<input name="tl" size="4"></label>
     </div>
     <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
+    <label>Translations from<select name="trSource"><option value="lr">Language Reactor</option><option value="openai">ChatGPT (OpenAI API key)</option><option value="claude">Claude (Claude API key)</option></select></label>
+    <div class="row"><label>ChatGPT model for translations<select name="trModelOpenai"></select></label><label>Claude model for translations<select name="trModelClaude"></select></label></div>
+    <p class="sub">Language Reactor is still used for your account: saved words, highlighting, saving words and phrases.</p>
     <label>Claude API key (stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
     <label>Claude model<select name="claudeModel"></select></label>
     <label>OpenAI API key (stays on this device)<input name="openaiKey" type="password" autocomplete="off"></label>

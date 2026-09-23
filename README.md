@@ -99,3 +99,10 @@ Offline English (for chapters not prepared):
 1. Settings > Download offline English translation (about 110 MB, once). Status shows a test line.
 2. Airplane mode, a chapter never prepared: tap a word: English gloss and the sentence in English,
    marked "Offline: English from the on-device model". Phrases too.
+
+Translation source:
+
+1. Settings > Translations from: ChatGPT (with an OpenAI key) or Claude (with a Claude key), model for
+   each. Open an unprepared chapter: the page translates, words highlight by dictionary form, a tapped
+   word shows glosses, More shows a dictionary entry; marking a word still saves to Language Reactor.
+2. Without the chosen key: footer shows "Translations are set to ...: add its API key in Settings".

@@ -1,5 +1,6 @@
 import type { Book } from "./epub";
-import { cacheGetMany, cacheSet, hdKey, hdLemmaKey, trKey } from "./db";
+import { cacheGetMany, cacheSet, hdKey, hdLemmaKey } from "./db";
+import * as S from "./source";
 import * as lr from "./lr";
 
 export type Progress = { chapter: number; chapters: number; sentences: number; sentencesTotal: number; words: number; wordsSeen: number };
@@ -62,7 +63,7 @@ export const chapterSentences = (book: Book) => book.chapters.map((c) => c.block
 
 // Caches every sentence translation and hover-dictionary entry of the given chapters, one chapter at a
 // time. Everything already cached is skipped, so a stopped run resumes where it left off.
-export async function prepareBook(book: Book, chapters: number[], lang: lr.Lang, perSecond: number, signal: AbortSignal, progress: (p: Progress) => void, done: (chapter: number) => Promise<void>) {
+export async function prepareBook(book: Book, chapters: number[], src: S.Source, lang: lr.Lang, perSecond: number, signal: AbortSignal, progress: (p: Progress) => void, done: (chapter: number) => Promise<void>) {
   const request = pacer(Math.max(0.5, perSecond), signal);
   const counts = chapterSentences(book);
   const sentencesTotal = chapters.reduce((n, ci) => n + counts[ci], 0);
@@ -72,22 +73,22 @@ export async function prepareBook(book: Book, chapters: number[], lang: lr.Lang,
   for (const ci of chapters) {
     p.chapter++;
     const sents = book.chapters[ci].blocks.flatMap((b) => b.sentences);
-    const trs = await cacheGetMany<lr.Translated>(sents.map((t) => trKey(t, lang)));
+    const trs = await cacheGetMany<lr.Translated>(sents.map((t) => S.trKey(src, t, lang)));
     p.sentences += trs.filter(Boolean).length;
     progress(p);
 
     const batches: number[][] = [];
-    let len = 500;
+    let len = src.batchChars;
     for (const [i, t] of sents.entries()) {
       if (trs[i]) continue;
-      if (len + t.length + 2 > 500) batches.push([]), (len = 0);
+      if (len + t.length + 2 > src.batchChars) batches.push([]), (len = 0);
       batches[batches.length - 1].push(i);
       len += t.length + 2;
     }
     await pool(batches, async (batch) => {
       const texts = batch.map((i) => sents[i]);
-      const res = await lr.translate(texts, lang, request);
-      await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k], lang), r)));
+      const res = await S.translate(src, texts, lang, request);
+      await Promise.all(res.map((r, k) => cacheSet(S.trKey(src, texts[k], lang), r)));
       batch.forEach((i, k) => (trs[i] = res[k]));
       p.sentences += batch.length;
       progress(p);
@@ -104,10 +105,11 @@ export async function prepareBook(book: Book, chapters: number[], lang: lr.Lang,
     }
     p.wordsSeen = seen.size;
     const keys = [...words.keys()];
+    // AI sources return word glosses with the sentences, already cached under these keys.
     const hits = await cacheGetMany<string[]>(keys);
     p.words += hits.filter(Boolean).length;
     progress(p);
-    await pool(keys.filter((_, i) => !hits[i]), async (k) => {
+    await pool(src.ai ? [] : keys.filter((_, i) => !hits[i]), async (k) => {
       const [form, t] = words.get(k)!;
       const entries = await request(() => lr.hoverDict(form, t, lang));
       await Promise.all([cacheSet(k, entries), cacheSet(hdKey(form, t, lang), entries)]);

@@ -1,11 +1,12 @@
 import "./style.css";
 import { registerSW } from "virtual:pwa-register";
 import { parseEpub, type Book } from "./epub";
-import { type Bookmark, addBook, cached, hdKey, hdLemmaKey, trKey as dbTrKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { type Bookmark, addBook, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
 import * as Sum from "./summary";
+import * as S from "./source";
 import * as MT from "./mt";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
@@ -26,18 +27,25 @@ const pref = (k: string, v?: string) => {
   return v ?? null;
 };
 
-type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string };
+type Settings = { email: string; token: string; sl: string; tl: string; rate: string; voice: string; speechRate: string; autoSay: boolean; claudeKey: string; claudeModel: string; openaiKey: string; openaiModel: string; trSource: string; trModelOpenai: string; trModelClaude: string };
 // Parsed once per change: mark() asks for it for every word.
 let settingsRaw: string | null = null, settingsVal: Settings;
 const settings = (): Settings => {
   const raw = pref("settings");
   if (raw !== settingsRaw || !settingsVal) {
     settingsRaw = raw;
-    settingsVal = { email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", ...JSON.parse(raw || "{}") };
+    settingsVal = { email: "", token: "", sl: "es", tl: "uk", rate: "4", voice: "", speechRate: "1", autoSay: true, claudeKey: "", claudeModel: "claude-opus-5", openaiKey: "", openaiModel: "gpt-5.5", trSource: "lr", trModelOpenai: "gpt-5.4-mini", trModelClaude: "claude-opus-5", ...JSON.parse(raw || "{}") };
   }
   return settingsVal;
 };
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
+// Translations and dictionary data: Language Reactor, or ChatGPT/Claude with the user's key.
+function source(): S.Source {
+  const s = settings();
+  if (s.trSource === "openai") return S.aiSource({ provider: "openai", key: s.openaiKey, model: s.trModelOpenai });
+  if (s.trSource === "claude") return S.aiSource({ provider: "claude", key: s.claudeKey, model: s.trModelClaude });
+  return S.LR;
+}
 const auth = (): lr.Auth | null => {
   const s = settings();
   return s.email && s.token ? { email: s.email, token: s.token } : null;
@@ -180,7 +188,9 @@ $("open-settings").addEventListener("click", async () => {
   const opts = (m: Record<string, string>) => Object.entries(m).map(([id, n]) => `<option value="${id}">${n}</option>`).join("");
   ($("settings").querySelector("[name=claudeModel]") as HTMLSelectElement).innerHTML = opts(Sum.CLAUDE_MODELS);
   ($("settings").querySelector("[name=openaiModel]") as HTMLSelectElement).innerHTML = opts(Sum.OPENAI_MODELS);
-  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "claudeKey", "claudeModel", "openaiKey", "openaiModel"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
+  ($("settings").querySelector("[name=trModelOpenai]") as HTMLSelectElement).innerHTML = opts(TR_OPENAI);
+  ($("settings").querySelector("[name=trModelClaude]") as HTMLSelectElement).innerHTML = opts(Sum.CLAUDE_MODELS);
+  for (const k of ["email", "token", "sl", "tl", "rate", "speechRate", "claudeKey", "claudeModel", "openaiKey", "openaiModel", "trSource", "trModelOpenai", "trModelClaude"] as const) (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value = s[k];
   (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked = s.autoSay;
   fillVoices();
   mtStatus();
@@ -194,7 +204,7 @@ settingsDlg.addEventListener("close", () => {
   if (settingsDlg.returnValue !== "save") return;
   const v = (k: string) => (settingsDlg.querySelector(`[name=${k}]`) as HTMLInputElement).value.trim();
   const autoSay = (settingsDlg.querySelector("[name=autoSay]") as HTMLInputElement).checked;
-  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5", openaiKey: v("openaiKey"), openaiModel: v("openaiModel") || "gpt-5.5" }));
+  pref("settings", JSON.stringify({ email: v("email"), token: v("token"), sl: v("sl") || "es", tl: v("tl") || "uk", rate: v("rate") || "4", voice: v("voice"), speechRate: v("speechRate") || "1", autoSay, claudeKey: v("claudeKey"), claudeModel: v("claudeModel") || "claude-opus-5", openaiKey: v("openaiKey"), openaiModel: v("openaiModel") || "gpt-5.5", trSource: v("trSource") || "lr", trModelOpenai: v("trModelOpenai") || "gpt-5.4-mini", trModelClaude: v("trModelClaude") || "claude-opus-5" }));
   loadWords();
 });
 
@@ -258,6 +268,8 @@ function speak(text: string, onError: (m: string) => void, voice = systemVoice()
     })
     .catch((e) => onError(`Play: ${msg(e)}`));
 }
+
+const TR_OPENAI: Record<string, string> = { "gpt-5.4-mini": "GPT-5.4 mini (fast, cheap)", "gpt-5.5": "GPT-5.5", "gpt-6-sol": "GPT-6 Sol" };
 
 function mtStatus() {
   $("mt-status").textContent = !MT.supported(settings().sl)
@@ -393,7 +405,7 @@ async function startPrepare(id: string, chapters: number[], withSummaries = fals
   say(`Preparing "${m.title}" for offline. Keep the app open; it resumes where it stopped.`);
   const counts = chapterSentences(b);
   try {
-    await prepareBook(b, chapters, lang(), Number(settings().rate) || 4, job.ctl.signal, (p) => {
+    await prepareBook(b, chapters, source(), lang(), Number(settings().rate) || 4, job.ctl.signal, (p) => {
       job.text = prepText(p);
       if (job.line) job.line.textContent = job.text;
     }, async (ci) => {
@@ -464,7 +476,7 @@ let trs: (lr.Translated | undefined)[] = [];
 const W = () => viewport.clientWidth;
 const pages = () => Math.max(1, Math.round(viewport.scrollWidth / W()));
 const pageOf = (el: Element) => Math.floor((el.getBoundingClientRect().left - content.getBoundingClientRect().left) / W());
-const trKey = (text: string) => dbTrKey(text, lang());
+const trKey = (text: string) => S.trKey(source(), text, lang());
 
 const WORD = /[\p{L}\p{M}\p{N}]+(?:['\u2019-][\p{L}\p{M}\p{N}]+)*/gu;
 function wordSpans(text: string) {
@@ -636,10 +648,11 @@ async function translatePage() {
     while (want.length) {
       const batch: number[] = [];
       let len = 0;
-      while (want.length && (len += sents[want[0]].length + 1) <= 500) batch.push(want.shift()!);
+      const max = source().batchChars;
+      while (want.length && (len += sents[want[0]].length + 1) <= max) batch.push(want.shift()!);
       if (!batch.length) batch.push(want.shift()!);
       const texts = batch.map((i) => sents[i]);
-      const res = await lr.translate(texts, lang());
+      const res = await S.translate(source(), texts, lang());
       await Promise.all(res.map((r, k) => cacheSet(trKey(texts[k]), r)));
       if (view !== shown) break;
       res.forEach((r, k) => (trs[batch[k]] = r));
@@ -656,7 +669,7 @@ async function translatePage() {
   }
 }
 
-const translateCached = (text: string) => cached(trKey(text), async () => (await lr.translate([text], lang()))[0]);
+const translateCached = (text: string) => cached(trKey(text), async () => (await S.translate(source(), [text], lang()))[0]);
 
 async function ensureTr(si: number): Promise<lr.Translated> {
   if (trs[si]) return trs[si]!;
@@ -720,7 +733,7 @@ async function openWord(w: HTMLElement) {
   let entries: string[] = [];
   try {
     const t = token;
-    entries = await cached(hdKey(form, t, lang()), () => lr.hoverDict(form, t, lang()));
+    entries = await cached(hdKey(form, t, lang()), () => S.gloss(source(), form, t, sents[si], lang()));
   } catch (e) {
     const byLemma = token && (await cacheGet<string[]>(hdLemmaKey(token, lang())));
     if (byLemma) entries = byLemma;
@@ -855,7 +868,7 @@ async function examples() {
   const missing = hits.filter((h) => !h.tr);
   if (!missing.length || !navigator.onLine) return;
   try {
-    const res = await lr.translate(missing.map((h) => h.text), lang());
+    const res = await S.translate(source(), missing.map((h) => h.text), lang());
     await Promise.all(res.map((r, i) => cacheSet(trKey(missing[i].text), r)));
     missing.forEach((h, i) => (h.tr = res[i].tr));
     if (current === w) box.innerHTML = foundList(hits, mark);
@@ -1053,7 +1066,9 @@ async function more() {
   box.textContent = "...";
   try {
     const s = settings();
-    const entries = await cached(`fd|${s.sl}|${s.tl}|${form.toLowerCase()}|${token?.lemma?.text || ""}|${token?.pos || ""}`, () => lr.fullDict(form, token, lang()));
+    const src = source();
+    const si = Number((w.parentElement as HTMLElement).dataset.s);
+    const entries = await cached(`fd|${src.id}|${s.sl}|${s.tl}|${form.toLowerCase()}|${token?.lemma?.text || ""}|${token?.pos || ""}`, () => S.dictionary(src, form, token, sents[si], lang()));
     box.innerHTML = entries
       .map((e) => `<div class="pos">${esc(e.word)}</div>` + e.posGroups.filter((g) => g.translations.length).map((g) => `<div><i>${esc((g.pos || "other").toLowerCase())}</i> ${g.translations.map(esc).join(", ")}</div>`).join(""))
       .join("") || "no entry";
