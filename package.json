@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ios": "npm run build && export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer && npx cap sync ios && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination id=$IPHONE -derivedDataPath tmp/ios-dev -allowProvisioningUpdates -quiet build && xcrun devicectl device install app --device $IPHONE tmp/ios-dev/Build/Products/Release-iphoneos/App.app"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

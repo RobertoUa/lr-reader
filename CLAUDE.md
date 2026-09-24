@@ -14,6 +14,14 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - Commit and push to `main` directly; the owner allowed it for this project. Watch the deploy with
   `gh run watch <id> -R RobertoUa/lr-reader --exit-status`.
 
+## iOS app
+
+- Capacitor wrapper in `ios/` (same web build). Personal team H2TMZ7F29K, bundle `com.robertoua.lrreader`;
+  free provisioning, so the install expires after 7 days: reinstall with
+  `IPHONE=00008140-001C3C261453001C npm run ios` (phone connected, unlocked, Developer Mode on).
+- `tts.ts`: in the app, device voices go through the native speech plugin (the WebView hides downloaded
+  Premium voices). The web build still updates via GitHub Pages; the app only on reinstall.
+
 ## Code map (`src/`)
 
 - `main.ts`: all UI and app state (library, reader, word sheet, phrases, panels, settings, outbox sync,
