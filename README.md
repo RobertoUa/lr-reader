@@ -15,7 +15,7 @@ Source to "GitHub Actions" once).
 Milestone 1:
 
 1. Open the Pages URL in Safari, Share > Add to Home Screen, launch from the icon (no Safari bars).
-2. Import book (Files app), EPUB or PDF, appears with "read 0%". A PDF needs a text layer; its
+2. Import (Files app), EPUB or PDF, appears with "read 0%". A PDF needs a text layer; its
    chapters come from bookmarks, "Capitulo N" headings or chapter numbers, else every 10 pages.
 3. Open it: tap right third / swipe left = next page, left third / swipe right = previous.
    Chapter picker jumps; the Aa panel changes size, theme and font and keeps the current sentence on screen.
@@ -57,7 +57,7 @@ Phrases and offline preparation:
 
 Bookmarks:
 
-1. Reader > star button > Bookmark this page: the footer shows a star on that page. The list shows
+1. Reader > menu > Bookmarks > Bookmark this page: the footer shows a star on that page. The list shows
    every bookmark with its chapter and text; tap one to jump there ("Back to where you were" returns).
    On a bookmarked page the button reads "Remove bookmark here".
 
@@ -82,7 +82,7 @@ Examples, search, page numbers:
 1. Word sheet > Show examples: up to 5 other sentences from this book with the same form or its
    dictionary form, with translations; tap one to jump there (the sentence flashes blue), then
    "Back to where you were" returns to the sentence you were reading. Same after a search jump.
-2. Reader > search button: accent- and case-insensitive search across the book; tap a result to jump.
+2. Reader > menu > Search: accent- and case-insensitive search across the book; tap a result to jump.
 3. Footer: chapter page (12/31), estimated book page (p. 57 of 412) and percent read.
 
 Summaries:

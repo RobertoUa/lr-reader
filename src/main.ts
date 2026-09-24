@@ -364,7 +364,7 @@ async function showLibrary() {
   reader.hidden = true;
   lib.hidden = false;
   const list = await listBooks();
-  books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Import an EPUB.</li>`;
+  books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Tap Import to add an EPUB or PDF.</li>`;
   $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
   for (const m of list) {
     const li = document.createElement("li");

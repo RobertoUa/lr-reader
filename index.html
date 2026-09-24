@@ -22,7 +22,7 @@
     <h1>LR Reader</h1>
     <button id="open-review">Review</button>
     <button id="open-settings" aria-label="Settings">Settings</button>
-    <label class="btn">Import book<input id="file" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf" hidden></label>
+    <label class="btn">Import<input id="file" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf" hidden></label>
   </header>
   <p id="status" role="status"></p>
   <button id="backup-nudge" hidden>No backup this week. Save one to iCloud Drive</button>
@@ -32,9 +32,7 @@
   <header class="bar">
     <button id="back" aria-label="Library">&lsaquo;</button>
     <select id="toc" aria-label="Chapter"></select>
-    <button id="menu" aria-label="Words, read aloud, stats, review">&#9776;</button>
-    <button id="bookmarks" aria-label="Bookmarks">&#9734;</button>
-    <button id="search" aria-label="Search">&#9906;</button>
+    <button id="menu" aria-label="Menu">&#9776;</button>
     <button id="summary" aria-label="Summary">AI</button>
     <button id="look" aria-label="Themes and settings">Aa</button>
   </header>
@@ -53,7 +51,7 @@
   <div id="summary-out"></div>
 </div>
 <div id="menu-panel" class="panel" hidden>
-  <div class="look-row"><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
+  <div class="look-row"><button id="search">Search</button><button id="bookmarks">Bookmarks</button><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
     <button data-menu="stats">Stats</button><button data-menu="review">Review</button></div>
   <div id="menu-out"></div>
 </div>
