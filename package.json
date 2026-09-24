@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@capacitor-community/text-to-speech": "^8.0.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@huggingface/transformers": "^4.3.0",
     "fflate": "^0.8.3",
     "idb-keyval": "^6.3.0",
@@ -17,6 +20,7 @@
     "pdfjs-dist": "^6.3.289"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vite-plugin-pwa": "^1.3.0",

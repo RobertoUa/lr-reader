@@ -9,6 +9,7 @@ import * as S from "./source";
 import * as MT from "./mt";
 import * as Study from "./study";
 import * as Freq from "./freq";
+import * as Tts from "./tts";
 import { SPEECH_VOICES, bookLevel, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
@@ -224,7 +225,7 @@ const SILENCE = (() => {
   b.fill(128, 44);
   return "data:audio/wav;base64," + btoa(String.fromCharCode(...b));
 })();
-const systemVoice = () => (settings().voice && speechSynthesis.getVoices().find((v) => v.voiceURI === settings().voice)) || null;
+const systemVoice = () => (settings().voice && Tts.voices().find((v) => v.voiceURI === settings().voice)) || null;
 // A voice setting "openai:<name>" means OpenAI speech; it needs the OpenAI key.
 const aiVoiceOf = (value: string) => (value.startsWith("openai:") && settings().openaiKey ? value.slice(7) : "");
 const aiSpeech = (text: string, voice: string) => {
@@ -233,8 +234,8 @@ const aiSpeech = (text: string, voice: string) => {
 };
 
 // iOS gives a downloaded Enhanced or Premium voice the same name as its compact one; only the URI differs.
-const voiceRank = (v: SpeechSynthesisVoice) => (/premium/i.test(v.voiceURI) ? 2 : /enhanced/i.test(v.voiceURI) ? 1 : 0);
-const voiceLabel = (v: SpeechSynthesisVoice) => {
+const voiceRank = (v: Tts.Voice) => (/premium/i.test(v.voiceURI) ? 2 : /enhanced/i.test(v.voiceURI) ? 1 : 0);
+const voiceLabel = (v: Tts.Voice) => {
   const q = ["", "Enhanced", "Premium"][voiceRank(v)];
   return `${v.name}${q && !v.name.includes(q) ? ` (${q})` : ""} - ${v.lang}`;
 };
@@ -242,28 +243,26 @@ const voiceLabel = (v: SpeechSynthesisVoice) => {
 function fillVoices() {
   const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
   const sl = settings().sl;
-  const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl)).sort((a, b) => voiceRank(b) - voiceRank(a));
+  const voices = Tts.voices().filter((v) => v.lang.toLowerCase().startsWith(sl)).sort((a, b) => voiceRank(b) - voiceRank(a));
   const ai = SPEECH_VOICES.map((v) => `<option value="openai:${v}">OpenAI ${v[0].toUpperCase() + v.slice(1)} (natural, needs OpenAI key)</option>`).join("");
   sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>${ai}` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(voiceLabel(v))}</option>`).join("");
   sel.value = settings().voice;
 }
-// iOS lists no voices until they load, and its speechSynthesis supports only the on* handler.
-speechSynthesis.onvoiceschanged = () => settingsDlg.open && fillVoices();
-speechSynthesis.getVoices();
+Tts.onVoicesChanged(() => settingsDlg.open && fillVoices());
 
 // Language Reactor's speech endpoint answers BAD_REQUEST above 30 characters, so longer text needs a
 // device voice even when Language Reactor is the chosen voice.
 const LR_TTS_MAX = 30;
 function deviceVoice() {
   const sl = settings().sl;
-  const all = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl));
+  const all = Tts.voices().filter((v) => v.lang.toLowerCase().startsWith(sl));
   const best = Math.max(0, ...all.map(voiceRank));
   const top = all.filter((v) => voiceRank(v) === best);
   return top.find((v) => v.default) || top.find((v) => v.lang.toLowerCase() === `${sl}-${sl}`) || top[0] || null;
 }
 
 // Must be called synchronously from a tap.
-function speak(text: string, onError: (m: string) => void, voice: SpeechSynthesisVoice | string | null = aiVoiceOf(settings().voice) || systemVoice(), rate = Number(settings().speechRate) || 1) {
+function speak(text: string, onError: (m: string) => void, voice: Tts.Voice | string | null = aiVoiceOf(settings().voice) || systemVoice(), rate = Number(settings().speechRate) || 1) {
   if (typeof voice === "string") {
     player.src = SILENCE;
     player.play().catch(() => {});
@@ -281,12 +280,8 @@ function speak(text: string, onError: (m: string) => void, voice: SpeechSynthesi
     if (!voice) return onError("Language Reactor can only say short words; this device has no voice for the book language.");
   }
   if (voice) {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.voice = voice;
-    u.lang = voice.lang;
-    u.rate = rate;
-    speechSynthesis.speak(u);
+    Tts.stop();
+    Tts.say(text, voice, rate);
     return;
   }
   player.src = SILENCE;
@@ -355,7 +350,7 @@ $("paste-login").addEventListener("click", async () => {
 $("test-voice").addEventListener("click", (e) => {
   e.preventDefault();
   const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
-  const voice = aiVoiceOf(sel.value) || speechSynthesis.getVoices().find((v) => v.voiceURI === sel.value) || null;
+  const voice = aiVoiceOf(sel.value) || Tts.voices().find((v) => v.voiceURI === sel.value) || null;
   const rate = Number((settingsDlg.querySelector("[name=speechRate]") as HTMLSelectElement).value) || 1;
   speak("Hola, \u00bfqu\u00e9 tal? Me gusta mucho leer libros en espa\u00f1ol.", (m) => ($("sync-detail").textContent = m), voice, rate);
 });
@@ -1392,7 +1387,7 @@ function stopReading() {
   if (readingCh < 0) return;
   readingCh = -1;
   readingRun++;
-  speechSynthesis.cancel();
+  Tts.stop();
   player.pause();
   $("reading-stop").hidden = true;
   content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
@@ -1421,13 +1416,7 @@ function readAloud() {
   const v = voice!;
   // Queued at once from the tap: iOS only lets speech start from a user action.
   for (let i = anchor(); i < sents.length; i++) {
-    const u = new SpeechSynthesisUtterance(sents[i]);
-    u.voice = v;
-    u.lang = v.lang;
-    u.rate = Number(settings().speechRate) || 1;
-    u.onstart = () => showReading(i);
-    if (i === sents.length - 1) u.onend = stopReading;
-    speechSynthesis.speak(u);
+    Tts.say(sents[i], v, Number(settings().speechRate) || 1, { onstart: () => showReading(i), onend: i === sents.length - 1 ? stopReading : undefined });
   }
 }
 // One sentence ahead is fetched while the current one plays.
