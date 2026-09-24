@@ -226,11 +226,18 @@ const SILENCE = (() => {
 })();
 const systemVoice = () => (settings().voice && speechSynthesis.getVoices().find((v) => v.voiceURI === settings().voice)) || null;
 
+// iOS gives a downloaded Enhanced or Premium voice the same name as its compact one; only the URI differs.
+const voiceRank = (v: SpeechSynthesisVoice) => (/premium/i.test(v.voiceURI) ? 2 : /enhanced/i.test(v.voiceURI) ? 1 : 0);
+const voiceLabel = (v: SpeechSynthesisVoice) => {
+  const q = ["", "Enhanced", "Premium"][voiceRank(v)];
+  return `${v.name}${q && !v.name.includes(q) ? ` (${q})` : ""} - ${v.lang}`;
+};
+
 function fillVoices() {
   const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
   const sl = settings().sl;
-  const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl));
-  sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(v.name)} (${esc(v.lang)})</option>`).join("");
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl)).sort((a, b) => voiceRank(b) - voiceRank(a));
+  sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(voiceLabel(v))}</option>`).join("");
   sel.value = settings().voice;
 }
 speechSynthesis.addEventListener?.("voiceschanged", () => settingsDlg.open && fillVoices());
@@ -241,7 +248,9 @@ const LR_TTS_MAX = 30;
 function deviceVoice() {
   const sl = settings().sl;
   const all = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl));
-  return all.find((v) => v.default) || all.find((v) => v.lang.toLowerCase() === `${sl}-${sl}`) || all[0] || null;
+  const best = Math.max(0, ...all.map(voiceRank));
+  const top = all.filter((v) => voiceRank(v) === best);
+  return top.find((v) => v.default) || top.find((v) => v.lang.toLowerCase() === `${sl}-${sl}`) || top[0] || null;
 }
 
 // Must be called synchronously from a tap.
@@ -340,6 +349,7 @@ async function showLibrary() {
   lib.hidden = false;
   const list = await listBooks();
   books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Import an EPUB.</li>`;
+  $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
   for (const m of list) {
     const li = document.createElement("li");
     li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
@@ -1423,29 +1433,53 @@ $("review-close").addEventListener("click", () => {
 // ---- Backup ----
 
 const SECRET = ["token", "claudeKey", "openaiKey"];
-$("backup-export").addEventListener("click", () => exportBackup().catch((e) => ($("backup-status").textContent = `Export failed: ${msg(e)}`)));
-async function exportBackup() {
-  const status = $("backup-status");
+const BACKUP_EVERY = 7 * 864e5;
+let backupFile: File | null = null;
+let leftOut = "";
+$("backup-export").addEventListener("click", () => exportBackup($("backup-status")));
+$("backup-nudge").addEventListener("click", () => exportBackup($("backup-nudge")));
+async function exportBackup(status: HTMLElement) {
+  try {
+    const file = backupFile || (await buildBackup(status));
+    // iOS saves files through the share sheet ("Save to Files" > iCloud Drive); elsewhere a download works.
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+      } catch (e) {
+        // Safari drops the tap's permission while a big backup is built; the next tap shares it at once.
+        if ((e as Error).name !== "NotAllowedError") return void (backupFile = null);
+        backupFile = file;
+        return void (status.textContent = "Backup ready. Tap again to save it.");
+      }
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file);
+      a.download = file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+    backupFile = null;
+    pref("lastBackup", String(Date.now()));
+    status.textContent = `Saved backup (${(file.size / 1e6).toFixed(1)} MB).${leftOut}`;
+    $("backup-nudge").hidden = true;
+  } catch (e) {
+    backupFile = null;
+    status.textContent = `Backup failed: ${msg(e)}`;
+  }
+}
+async function buildBackup(status: HTMLElement) {
   status.textContent = "Preparing...";
   const metas = await listBooks();
   // A book the browser can no longer read is left out and named, instead of failing the whole export.
   const unreadable: string[] = [];
   const books = (await Promise.all(metas.map(async (m) => ({ meta: m, book: await getBook(m.id).catch(() => void unreadable.push(m.title)) })))).filter((b) => b.book);
+  leftOut = unreadable.length ? ` Could not read: ${unreadable.join(", ")}.` : "";
   const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
   const s: Record<string, unknown> = { ...settings() };
   if (!($("backup-secrets") as HTMLInputElement).checked) for (const k of SECRET) delete s[k];
   const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), books, cache: cacheEntries };
-  const file = new File([JSON.stringify(data)], `lr-reader-backup-${Study.dayKey()}.json`, { type: "application/json" });
-  // iOS saves files through the share sheet; elsewhere a download works.
-  if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] }).catch(() => {});
-  else {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(file);
-    a.download = file.name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  }
-  status.textContent = `Exported ${books.length} books, ${cacheEntries.length} other records (${(file.size / 1e6).toFixed(1)} MB).${unreadable.length ? ` Could not read: ${unreadable.join(", ")}.` : ""}`;
+  // One fixed name, so saving to the same iCloud folder replaces the previous backup.
+  return new File([JSON.stringify(data)], "lr-reader-backup.json", { type: "application/json" });
 }
 $("backup-import").addEventListener("change", async () => {
   const input = $("backup-import") as HTMLInputElement, status = $("backup-status");

@@ -25,6 +25,7 @@
     <label class="btn">Import book<input id="file" type="file" accept=".epub,application/epub+zip,.pdf,application/pdf" hidden></label>
   </header>
   <p id="status" role="status"></p>
+  <button id="backup-nudge" hidden>No backup this week. Save one to iCloud Drive</button>
   <ul id="books"></ul>
 </main>
 <section id="reader" hidden>
@@ -111,10 +112,10 @@
     <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
     <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>
     <p id="mt-status" class="sub"></p>
-    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Export backup</button>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Save backup</button>
       <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
     <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
-    <p id="backup-status" class="sub">Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
+    <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>
