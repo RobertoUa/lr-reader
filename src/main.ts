@@ -1253,14 +1253,17 @@ async function wordExtras(w: HTMLElement, form: string, lemma: string, pos: stri
   const parts: string[] = [];
   const render = () => box() && (box()!.textContent = parts.filter(Boolean).join(" \u00b7 "));
   const sl = settings().sl;
+  // How often this word (by dictionary form) has been looked up, this time included; kept in backups.
+  const key = `looks|${sl}|${lemma}`;
+  cacheGet<number>(key).then((n = 0) => (cacheSet(key, n + 1), (parts[0] = `Looked up ${n + 1}\u00d7`), render()));
   if (Freq.supported(sl)) {
-    Freq.popularity(form, lemma).then((p) => ((parts[0] = `Frequency ${p}`), render())).catch(() => {});
+    Freq.popularity(form, lemma).then((p) => ((parts[1] = `Frequency ${p}`), render())).catch(() => {});
   }
   const cfg = aiForExtras();
   if (!cfg) return;
   try {
     const syn = await cached(`syn|${sl}|${lemma}|${pos}`, () => aiSynonyms(lemma, pos, sentence, lang(), cfg));
-    parts[1] = syn.length ? `Synonyms: ${syn.join(", ")}` : "";
+    parts[2] = syn.length ? `Synonyms: ${syn.join(", ")}` : "";
     render();
   } catch {}
 }
@@ -1328,7 +1331,7 @@ async function openPhrase(edited?: string) {
   phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
   const key = lr.phraseKey(text, sl);
   const queued = outbox.some((x) => x.key === key);
-  sheet.innerHTML = CLOSE + `<textarea class="phrase-edit" rows="1" aria-label="Phrase, editable" autocapitalize="off" spellcheck="false">${esc(text)}</textarea>
+  sheet.innerHTML = CLOSE + `<textarea class="phrase-edit" rows="2" aria-label="Phrase, editable" autocapitalize="off" spellcheck="false">${esc(text)}</textarea>
     <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
     ${trs[si] || enSent ? `<div class="sent"><b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
     ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
@@ -1637,7 +1640,7 @@ async function buildBackup(status: HTMLElement) {
   const unreadable: string[] = [];
   const books = (await Promise.all(metas.map(async (m) => ({ meta: m, book: await getBook(m.id).catch(() => void unreadable.push(m.title)) })))).filter((b) => b.book);
   leftOut = unreadable.length ? ` Could not read: ${unreadable.join(", ")}.` : "";
-  const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
+  const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "looks|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
   const s: Record<string, unknown> = { ...settings() };
   if (!($("backup-secrets") as HTMLInputElement).checked) for (const k of SECRET) delete s[k];
   const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), books, cache: cacheEntries };
