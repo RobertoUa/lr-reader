@@ -803,13 +803,13 @@ async function openWord(w: HTMLElement) {
   sheet.innerHTML = `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
+    <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : esc(enSent)}</b></div>
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
     <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Show examples</button></div>
     <div id="more"></div>
-    <div id="examples"></div>
-    <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : esc(enSent)}</b></div>`;
+    <div id="examples"></div>`;
   wordExtras(w, form, lemma, token?.pos || "", sents[si]);
 }
 
@@ -1216,9 +1216,9 @@ async function openPhrase() {
   const queued = outbox.some((x) => x.key === key);
   sheet.innerHTML = `<h3>${esc(text)}</h3>
     <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
+    ${trs[si] || enSent ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
     ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
-    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>
-    ${trs[si] || enSent ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}`;
+    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>`;
 }
 
 function savePhrase(b: HTMLElement) {
@@ -1517,6 +1517,30 @@ viewport.addEventListener("pointerup", (e) => {
   if (x < 0.3) turn(-1);
   else if (x > 0.7) turn(1);
 });
+
+// Swipe a sheet or panel down to close it. Touch events, because iOS cancels pointer events once it scrolls.
+let pull: { el: HTMLElement; y: number; dy: number } | null = null;
+document.addEventListener("touchstart", (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>("#sheet, .panel");
+  pull = el && el.scrollTop <= 0 ? { el, y: e.touches[0].clientY, dy: 0 } : null;
+  if (pull) pull.el.style.transition = "";
+}, { passive: true });
+document.addEventListener("touchmove", (e) => {
+  if (!pull) return;
+  pull.dy = e.touches[0].clientY - pull.y;
+  pull.el.style.transform = pull.dy > 0 && pull.el.scrollTop <= 0 ? `translateY(${pull.dy}px)` : "";
+}, { passive: true });
+const endPull = () => {
+  if (!pull) return;
+  const { el, dy } = pull;
+  pull = null;
+  el.style.transition = "transform 0.2s";
+  el.style.transform = "";
+  if (dy > 80 && el.scrollTop <= 0) closeSheet();
+};
+document.addEventListener("touchend", endPull);
+document.addEventListener("touchcancel", endPull);
+
 document.addEventListener("keydown", (e) => {
   if (reader.hidden || settingsDlg.open) return;
   if (e.key === "ArrowRight" || e.key === " ") turn(1);
