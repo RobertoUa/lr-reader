@@ -1151,7 +1151,7 @@ const renderSummary = (v: Saved) => {
 };
 async function showSaved() {
   const run = ++sumRun;
-  const v = await cacheGet<Saved>(savedKey(sumLang.value, sumScope === "page" ? pageText() : chapterText()));
+  const v = await cacheGet<Saved>(savedKey(sumLang.value, scopeText()));
   if (run !== sumRun) return;
   if (v) renderSummary(v);
   else summaryOut.textContent = "";
@@ -1167,9 +1167,12 @@ type Provider = "claude" | "openai";
 const defaultProvider = (): Provider => (pref("sumProvider") as Provider) || (settings().claudeKey ? "claude" : "openai");
 const textOf = (bk: Book, ci: number) => bk.chapters[ci].blocks.map((b) => b.sentences.join(" ")).join("\n\n");
 const chapterText = () => textOf(book, ch);
+// From the chapter start to the end of the page being read.
+const soFarText = () => sents.slice(0, firstFrom(page + 1)).join(" ");
+const scopeText = () => (sumScope === "page" ? pageText() : sumScope === "sofar" ? soFarText() : chapterText());
 
 // Cached per model, language and exact text, so the panel finds summaries made while preparing.
-async function summaryFor(bk: Book, ci: number, outLang: string, provider: Provider, text = textOf(bk, ci), scope: "page" | "chapter" = "chapter", onText = (_: string) => {}): Promise<string> {
+async function summaryFor(bk: Book, ci: number, outLang: string, provider: Provider, text = textOf(bk, ci), scope: Sum.Scope = "chapter", onText = (_: string) => {}): Promise<string> {
   const s = settings();
   const openai = provider === "openai";
   const key = openai ? s.openaiKey : s.claudeKey;
@@ -1188,13 +1191,13 @@ async function summaryFor(bk: Book, ci: number, outLang: string, provider: Provi
   return out;
 }
 
-let sumScope: "page" | "chapter" = "page";
+let sumScope: Sum.Scope = "page";
 let sumRun = 0;
 
 summaryPanel.addEventListener("click", async (e) => {
   const scopeBtn = (e.target as HTMLElement).closest<HTMLElement>("[data-scope]");
   if (scopeBtn) {
-    sumScope = scopeBtn.dataset.scope as "page" | "chapter";
+    sumScope = scopeBtn.dataset.scope as Sum.Scope;
     summaryPanel.querySelectorAll<HTMLElement>("[data-scope]").forEach((x) => x.classList.toggle("on", x === scopeBtn));
     return void showSaved();
   }
@@ -1202,7 +1205,7 @@ summaryPanel.addEventListener("click", async (e) => {
   if (!b) return;
   const run = ++sumRun;
   const s = settings();
-  const ask: Sum.Ask = { text: sumScope === "page" ? pageText() : chapterText(), scope: sumScope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value };
+  const ask: Sum.Ask = { text: scopeText(), scope: sumScope, title: book.chapters[ch].title, sl: s.sl, tl: s.tl, outLang: sumLang.value };
   const how = b.dataset.sum!;
   if (!how.startsWith("key-")) {
     // Key-free path: hand the request to the Claude or ChatGPT app; also copied in case it is too long for a link.
@@ -1217,7 +1220,7 @@ summaryPanel.addEventListener("click", async (e) => {
   const model = provider === "openai" ? s.openaiModel : s.claudeModel;
   // Models think before the first word arrives; show that something is happening until it does.
   const started = Date.now();
-  const waiting = () => `Summarizing this ${ask.scope} with ${modelName(model)}... ${Math.round((Date.now() - started) / 1000)}s`;
+  const waiting = () => `Summarizing ${ask.scope === "sofar" ? "the chapter so far" : `this ${ask.scope}`} with ${modelName(model)}... ${Math.round((Date.now() - started) / 1000)}s`;
   summaryOut.innerHTML = `<div class="sub"></div><div></div>`;
   const status = summaryOut.firstElementChild!, body = summaryOut.lastElementChild!;
   status.textContent = waiting();
@@ -1768,7 +1771,7 @@ document.addEventListener("touchend", endPull);
 document.addEventListener("touchcancel", endPull);
 
 document.addEventListener("keydown", (e) => {
-  if (reader.hidden || settingsDlg.open || (e.target as HTMLElement).matches("input, textarea, select")) return;
+  if (reader.hidden || settingsDlg.open || (e.target as Element).matches?.("input, textarea, select")) return;
   if (e.key === "ArrowRight" || e.key === " ") turn(1);
   if (e.key === "ArrowLeft") turn(-1);
   if (e.key === "Escape") closeSheet();

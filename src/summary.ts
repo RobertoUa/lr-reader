@@ -3,7 +3,8 @@
 export const CLAUDE_MODELS: Record<string, string> = { "claude-opus-5": "Claude Opus 5", "claude-sonnet-5": "Claude Sonnet 5", "claude-haiku-4-5": "Claude Haiku 4.5" };
 export const OPENAI_MODELS: Record<string, string> = { "gpt-5.5": "GPT-5.5", "gpt-6-sol": "GPT-6 Sol", "gpt-5.4-mini": "GPT-5.4 mini" };
 
-export type Ask = { text: string; scope: "page" | "chapter"; title: string; sl: string; tl: string; outLang: string };
+export type Scope = "page" | "sofar" | "chapter";
+export type Ask = { text: string; scope: Scope; title: string; sl: string; tl: string; outLang: string };
 
 const langName = (code: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(code) || code;
 
@@ -13,8 +14,8 @@ export function prompt(a: Ask): { system: string; user: string } {
       `You summarize passages from a ${langName(a.sl)} book for someone learning ${langName(a.sl)} whose native language is ${langName(a.tl)}. ` +
       `Write the summary in ${langName(a.outLang)}${a.outLang === a.sl ? ", using simple words and short sentences" : ""}. ` +
       `Say what happens, who is involved and anything needed to follow the next part. ` +
-      `For one page, 3 to 5 sentences; for a chapter, 2 or 3 short paragraphs. Plain text, no headings or lists.`,
-    user: `Summarize this ${a.scope} of "${a.title}":\n\n<text>\n${a.text}\n</text>`,
+      `For one page, 3 to 5 sentences; for a chapter or part of one, 2 or 3 short paragraphs. Plain text, no headings or lists.`,
+    user: `${a.scope === "sofar" ? `Summarize the chapter "${a.title}" from its start up to where the reader stopped` : `Summarize this ${a.scope} of "${a.title}"`}:\n\n<text>\n${a.text}\n</text>`,
   };
 }
 
