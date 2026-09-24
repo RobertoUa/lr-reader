@@ -9,7 +9,7 @@ import * as S from "./source";
 import * as MT from "./mt";
 import * as Study from "./study";
 import * as Freq from "./freq";
-import { synonyms as aiSynonyms } from "./aitr";
+import { SPEECH_VOICES, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -225,6 +225,12 @@ const SILENCE = (() => {
   return "data:audio/wav;base64," + btoa(String.fromCharCode(...b));
 })();
 const systemVoice = () => (settings().voice && speechSynthesis.getVoices().find((v) => v.voiceURI === settings().voice)) || null;
+// A voice setting "openai:<name>" means OpenAI speech; it needs the OpenAI key.
+const aiVoiceOf = (value: string) => (value.startsWith("openai:") && settings().openaiKey ? value.slice(7) : "");
+const aiSpeech = (text: string, voice: string) => {
+  const { sl, openaiKey } = settings();
+  return cached(`tts|openai|${voice}|${sl}|${text}`, () => speech(text, voice, sl, openaiKey));
+};
 
 // iOS gives a downloaded Enhanced or Premium voice the same name as its compact one; only the URI differs.
 const voiceRank = (v: SpeechSynthesisVoice) => (/premium/i.test(v.voiceURI) ? 2 : /enhanced/i.test(v.voiceURI) ? 1 : 0);
@@ -237,7 +243,8 @@ function fillVoices() {
   const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
   const sl = settings().sl;
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(sl)).sort((a, b) => voiceRank(b) - voiceRank(a));
-  sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(voiceLabel(v))}</option>`).join("");
+  const ai = SPEECH_VOICES.map((v) => `<option value="openai:${v}">OpenAI ${v[0].toUpperCase() + v.slice(1)} (natural, needs OpenAI key)</option>`).join("");
+  sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>${ai}` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(voiceLabel(v))}</option>`).join("");
   sel.value = settings().voice;
 }
 // iOS lists no voices until they load, and its speechSynthesis supports only the on* handler.
@@ -256,7 +263,19 @@ function deviceVoice() {
 }
 
 // Must be called synchronously from a tap.
-function speak(text: string, onError: (m: string) => void, voice = systemVoice(), rate = Number(settings().speechRate) || 1) {
+function speak(text: string, onError: (m: string) => void, voice: SpeechSynthesisVoice | string | null = aiVoiceOf(settings().voice) || systemVoice(), rate = Number(settings().speechRate) || 1) {
+  if (typeof voice === "string") {
+    player.src = SILENCE;
+    player.play().catch(() => {});
+    aiSpeech(text, voice)
+      .then((url) => {
+        player.src = url;
+        player.playbackRate = rate;
+        return player.play();
+      })
+      .catch((e) => onError(`Play: ${msg(e)}`));
+    return;
+  }
   if (!voice && text.length > LR_TTS_MAX) {
     voice = deviceVoice();
     if (!voice) return onError("Language Reactor can only say short words; this device has no voice for the book language.");
@@ -336,7 +355,7 @@ $("paste-login").addEventListener("click", async () => {
 $("test-voice").addEventListener("click", (e) => {
   e.preventDefault();
   const sel = settingsDlg.querySelector("[name=voice]") as HTMLSelectElement;
-  const voice = speechSynthesis.getVoices().find((v) => v.voiceURI === sel.value) || null;
+  const voice = aiVoiceOf(sel.value) || speechSynthesis.getVoices().find((v) => v.voiceURI === sel.value) || null;
   const rate = Number((settingsDlg.querySelector("[name=speechRate]") as HTMLSelectElement).value) || 1;
   speak("Hola, \u00bfqu\u00e9 tal? Me gusta mucho leer libros en espa\u00f1ol.", (m) => ($("sync-detail").textContent = m), voice, rate);
 });
@@ -1341,36 +1360,72 @@ async function showStats() {
 
 let readingCh = -1;
 const readingFromChapter = (i: number) => readingCh === i;
+let readingRun = 0;
 function stopReading() {
   if (readingCh < 0) return;
   readingCh = -1;
+  readingRun++;
   speechSynthesis.cancel();
+  player.pause();
   $("reading-stop").hidden = true;
   content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
 }
+function showReading(i: number) {
+  if (readingCh !== ch) return;
+  content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
+  spans[i]?.classList.add("reading");
+  const p = spans[i] ? pageOf(spans[i]) : page;
+  if (p !== page) goto(p);
+}
 function readAloud() {
-  const voice = systemVoice() || deviceVoice();
-  if (!voice) return void (menuOut.innerHTML = `<div class="err">This device has no voice for the book language.</div>`);
+  const ai = aiVoiceOf(settings().voice);
+  const voice = ai ? null : systemVoice() || deviceVoice();
+  if (!ai && !voice) return void (menuOut.innerHTML = `<div class="err">This device has no voice for the book language.</div>`);
   closeSheet();
   stopReading();
   readingCh = ch;
   $("reading-stop").hidden = false;
+  if (ai) {
+    // The player is unlocked inside this tap, then reused for every sentence.
+    player.src = SILENCE;
+    player.play().catch(() => {});
+    return void readAloudAi(ai, anchor(), ++readingRun);
+  }
+  const v = voice!;
   // Queued at once from the tap: iOS only lets speech start from a user action.
   for (let i = anchor(); i < sents.length; i++) {
     const u = new SpeechSynthesisUtterance(sents[i]);
-    u.voice = voice;
-    u.lang = voice.lang;
+    u.voice = v;
+    u.lang = v.lang;
     u.rate = Number(settings().speechRate) || 1;
-    u.onstart = () => {
-      if (readingCh !== ch) return;
-      content.querySelectorAll(".s.reading").forEach((x) => x.classList.remove("reading"));
-      spans[i]?.classList.add("reading");
-      const p = spans[i] ? pageOf(spans[i]) : page;
-      if (p !== page) goto(p);
-    };
+    u.onstart = () => showReading(i);
     if (i === sents.length - 1) u.onend = stopReading;
     speechSynthesis.speak(u);
   }
+}
+// One sentence ahead is fetched while the current one plays.
+async function readAloudAi(voice: string, from: number, run: number) {
+  const rate = Number(settings().speechRate) || 1;
+  let next = aiSpeech(sents[from], voice);
+  try {
+    for (let i = from; i < sents.length; i++) {
+      const url = await next;
+      if (run !== readingRun) return;
+      if (i + 1 < sents.length) (next = aiSpeech(sents[i + 1], voice)).catch(() => {});
+      showReading(i);
+      player.src = url;
+      player.playbackRate = rate;
+      await player.play();
+      await new Promise((r) => (player.onended = player.onpause = r));
+      if (run !== readingRun) return;
+    }
+  } catch (e) {
+    if (run !== readingRun) return;
+    stopReading();
+    sheet.hidden = false;
+    sheet.innerHTML = `<div class="err">Read aloud: ${esc(msg(e))}</div>`;
+  }
+  if (run === readingRun) stopReading();
 }
 $("reading-stop").addEventListener("click", stopReading);
 

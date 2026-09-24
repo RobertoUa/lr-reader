@@ -106,3 +106,25 @@ export async function synonyms(lemma: string, pos: string, sentence: string, lan
   const user = `Word: ${lemma}\nPart of speech: ${pos}\nSentence: ${sentence}`;
   return (await ask<{ synonyms: string[] }>(cfg, system, user, SYNONYM_SCHEMA)).synonyms;
 }
+
+export const SPEECH_VOICES = ["marin", "cedar", "coral", "sage", "ash"];
+
+// Speech from OpenAI, as a data URL so it caches like Language Reactor's audio.
+export async function speech(text: string, voice: string, sl: string, key: string): Promise<string> {
+  const r = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini-tts",
+      voice,
+      input: text,
+      instructions: `Read this ${langName(sl)} text aloud as a native speaker would: clear, natural, calm pace.`,
+      response_format: "mp3",
+    }),
+  });
+  if (!r.ok) throw new Error(`OpenAI speech: ${r.status} ${(await r.json().catch(() => null))?.error?.message || r.statusText}`);
+  const b = new Uint8Array(await r.arrayBuffer());
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return "data:audio/mpeg;base64," + btoa(s);
+}

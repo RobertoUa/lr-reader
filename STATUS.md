@@ -63,7 +63,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   4), optional chapter summaries.
 - Summaries: Claude (SDK) or ChatGPT (fetch) with the user's key; progress with elapsed seconds;
   saved summary shown when the panel opens; key-free Open in Claude / Open in ChatGPT / Share.
-- Speech: Language Reactor voice for up to 30 characters, device voices otherwise or when chosen;
+- Speech: OpenAI voices (gpt-4o-mini-tts, user key, cached per sentence; iOS hides downloaded Enhanced/Premium voices from web apps), Language Reactor voice for up to 30 characters, device voices otherwise or when chosen;
   speak on tap.
 - Offline English fallback: opus-mt es-en in the browser (about 110 MB), runtime served from the app.
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
