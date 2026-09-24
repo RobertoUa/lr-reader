@@ -111,7 +111,7 @@ export async function synonyms(lemma: string, pos: string, sentence: string, lan
 export async function explain(what: "word" | "sentence" | "paragraph", word: string, text: string, lang: Lang, cfg: AiCfg): Promise<string> {
   const task =
     what === "word"
-      ? `Explain the ${langName(lang.sl)} word "${word}" as used in the sentence: its dictionary form, what this form is (tense, person, gender, number), its meaning here, and any idiom it is part of.`
+      ? `Explain the ${langName(lang.sl)} ${word.includes(" ") ? "phrase" : "word"} "${word}" as used in the sentence: its dictionary form, what this form is (tense, person, gender, number), its meaning here, and any idiom it is part of.`
       : `Explain this ${langName(lang.sl)} ${what}: its meaning, then the grammar and phrases a learner may not know (tenses, idioms, word order).`;
   const system = `You help a learner reading ${langName(lang.sl)}. ${task} Answer in ${langName(lang.tl)}, plain text, no markdown, under ${what === "paragraph" ? 150 : 80} words.`;
   const label = what === "paragraph" ? "Paragraph" : "Sentence";

@@ -799,6 +799,10 @@ function relayout() {
 // ---- Word sheet ----
 
 let current: HTMLElement | null = null;
+const TOOLS = (more = true) => `<button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button>${more ? `<button data-act="more">More</button>` : ""}<button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+    <div id="explain" class="explain"></div>
+    <div id="more"></div>
+    <div id="examples"></div>`;
 const CLOSE = `<button class="x" data-act="close" aria-label="Close">&times;</button>`;
 
 function closeSheet() {
@@ -862,10 +866,7 @@ async function openWord(w: HTMLElement) {
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button><button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
-    <div id="explain" class="explain"></div>
-    <div id="more"></div>
-    <div id="examples"></div>`;
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button>${TOOLS()}`;
   wordExtras(w, form, lemma, token?.pos || "", sents[si]);
 }
 
@@ -949,37 +950,46 @@ document.addEventListener("click", (e) => {
   if (b) jumpTo(Number(b.dataset.ci), Number(b.dataset.si));
 });
 
+// What the popup is about: the tapped word, or the selected (possibly edited) phrase.
+function subject() {
+  const w = current || selected[0];
+  const text = current ? current.textContent! : phrase?.text;
+  return w && text ? { w, text } : null;
+}
+
 async function explainCurrent(what: "word" | "sentence" | "paragraph") {
-  const w = current;
-  if (!w) return;
+  const sub = subject();
+  if (!sub) return;
+  const w = sub.w;
   const box = $("explain");
   const cfg = aiForExtras();
   if (!cfg) return void (box.innerHTML = `<div class="sub">Explanations need a ChatGPT or Claude key in Settings.</div>`);
-  const s = w.parentElement as HTMLElement, word = w.textContent!;
+  const s = w.parentElement as HTMLElement, word = sub.text;
   const text = what === "paragraph" ? [...s.parentElement!.querySelectorAll<HTMLElement>(".s")].map((x) => sents[Number(x.dataset.s)]).join(" ") : sents[Number(s.dataset.s)];
   const { sl, tl } = lang();
   box.innerHTML = `<div class="sub">...</div>`;
   try {
     const out = await cached(`expl|${what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg));
-    if (current === w) box.innerHTML = esc(out).replace(/\n+/g, "<br>");
+    if (subject()?.w === w) box.innerHTML = esc(out).replace(/\n+/g, "<br>");
   } catch (e) {
-    if (current === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
+    if (subject()?.w === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
   }
 }
 
 // Example sentences from outside the book, cached per word so they also show offline.
 let shownExamples: Tatoeba.Example[] = [];
 async function examples() {
-  const w = current;
-  if (!w) return;
+  const sub = subject();
+  if (!sub) return;
+  const w = sub.w;
   const box = $("examples");
   const { sl, tl } = lang();
   if (!Tatoeba.supported(sl)) return void (box.innerHTML = `<div class="sub">No example sentences for this language.</div>`);
-  const form = w.textContent!.toLowerCase(), { lemma } = lemmaFor(w);
+  const form = sub.text.toLowerCase(), lemma = current ? lemmaFor(w).lemma : form;
   box.innerHTML = `<div class="sub">...</div>`;
   try {
     const found = await cached(`ex|${sl}|${tl}|${form}|${lemma}`, () => Tatoeba.examples(form, lemma, sl, tl));
-    if (current !== w) return;
+    if (subject()?.w !== w) return;
     shownExamples = found;
     const mark = (t: string) => esc(t).replace(wordRe([form, lemma].map(esc)), "<b>$1</b>");
     box.innerHTML = found.length
@@ -991,17 +1001,17 @@ async function examples() {
         `<div class="sub">Tap a sentence to hear it. Sentences from Tatoeba (CC BY 2.0 FR).</div>`
       : `<div class="sub">No example sentences found for "${esc(form)}".</div>`;
   } catch (e) {
-    if (current === w) box.innerHTML = `<div class="err">Examples: ${esc(msg(e))}</div>`;
+    if (subject()?.w === w) box.innerHTML = `<div class="err">Examples: ${esc(msg(e))}</div>`;
   }
 }
 
 // Up to 5 other sentences with the same form or dictionary form, going forward from here.
 async function inBook() {
-  const w = current;
-  if (!w) return;
+  const sub = subject();
+  if (!sub) return;
+  const w = sub.w;
   const box = $("examples");
-  const { lemma } = lemmaFor(w);
-  const words = [...new Set([w.textContent!.toLowerCase(), lemma])];
+  const words = [...new Set([sub.text.toLowerCase(), current ? lemmaFor(w).lemma : sub.text.toLowerCase()])];
   const re = wordRe(words);
   const here = offsets[ch] + Number((w.parentElement as HTMLElement).dataset.s);
   const seen = new Set([sents[Number((w.parentElement as HTMLElement).dataset.s)]]);
@@ -1022,7 +1032,7 @@ async function inBook() {
     const res = await S.translate(source(), missing.map((h) => h.text), lang());
     await Promise.all(res.map((r, i) => cacheSet(trKey(missing[i].text), r)));
     missing.forEach((h, i) => (h.tr = res[i].tr));
-    if (current === w) box.innerHTML = foundList(hits, mark);
+    if (subject()?.w === w) box.innerHTML = foundList(hits, mark);
   } catch (e) {
     box.insertAdjacentHTML("beforeend", `<div class="err">${esc(msg(e))}</div>`);
   }
@@ -1283,7 +1293,7 @@ function selectRange(from: HTMLElement, to: HTMLElement) {
   selected = next;
 }
 
-async function openPhrase() {
+async function openPhrase(edited?: string) {
   const sel = selected;
   current?.classList.remove("on");
   current = null;
@@ -1291,7 +1301,8 @@ async function openPhrase() {
   const range = document.createRange();
   range.setStartBefore(sel[0]);
   range.setEndAfter(sel[sel.length - 1]);
-  const text = range.toString().replace(/\s+/g, " ").trim();
+  const text = (edited ?? range.toString()).replace(/\s+/g, " ").trim();
+  if (!text) return;
   const si = Number((sel[0].parentElement as HTMLElement).dataset.s);
   const sl = settings().sl;
   phrase = null;
@@ -1317,11 +1328,12 @@ async function openPhrase() {
   phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
   const key = lr.phraseKey(text, sl);
   const queued = outbox.some((x) => x.key === key);
-  sheet.innerHTML = CLOSE + `<h3>${esc(text)}</h3>
+  sheet.innerHTML = CLOSE + `<textarea class="phrase-edit" rows="1" aria-label="Phrase, editable" autocapitalize="off" spellcheck="false">${esc(text)}</textarea>
     <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
-    ${trs[si] || enSent ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
+    ${trs[si] || enSent ? `<div class="sent"><b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
     ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
-    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>`;
+    <div class="sub">Edit the phrase above, or tap words in the text to extend it.</div>
+    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain phrase</button>${TOOLS(false)}`;
 }
 
 // Saved like a selected phrase; the draft is completed with a translation when the outbox syncs.
@@ -1351,6 +1363,16 @@ function savePhrase(b: HTMLElement) {
   flushOutbox();
 }
 
+sheet.addEventListener("change", (e) => {
+  const t = e.target as HTMLTextAreaElement;
+  if (t.classList.contains("phrase-edit") && selected.length && t.value.trim() !== phrase?.text) openPhrase(t.value);
+});
+sheet.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.target as HTMLElement).classList.contains("phrase-edit")) {
+    e.preventDefault();
+    (e.target as HTMLElement).blur();
+  }
+});
 sheet.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
@@ -1650,6 +1672,7 @@ $("backup-import").addEventListener("change", async () => {
 let down: { x: number; y: number } | null = null;
 let press = 0;
 let selFrom: HTMLElement | null = null;
+let selFrom0: HTMLElement | null = null;
 const wordAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<HTMLElement>("#content .w") || null;
 
 viewport.addEventListener("pointerdown", (e) => {
@@ -1660,7 +1683,7 @@ viewport.addEventListener("pointerdown", (e) => {
   if (!w) return;
   press = window.setTimeout(() => {
     closeSheet();
-    selFrom = w;
+    selFrom = selFrom0 = w;
     viewport.setPointerCapture(e.pointerId);
     selectRange(w, w);
   }, 400);
@@ -1686,6 +1709,11 @@ viewport.addEventListener("pointerup", (e) => {
   down = null;
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return turn(dx < 0 ? 1 : -1);
   const w = (e.target as HTMLElement).closest<HTMLElement>(".w");
+  // With a phrase open, tapping another word stretches the phrase to it.
+  if (w && selFrom0 && selected.length && !sheet.hidden) {
+    selectRange(selFrom0, w);
+    return void openPhrase();
+  }
   if (w) return w === current ? closeSheet() : void openWord(w);
   if (!sheet.hidden || document.querySelector(".panel:not([hidden])")) return closeSheet();
   const x = e.clientX / W();
@@ -1717,7 +1745,7 @@ document.addEventListener("touchend", endPull);
 document.addEventListener("touchcancel", endPull);
 
 document.addEventListener("keydown", (e) => {
-  if (reader.hidden || settingsDlg.open) return;
+  if (reader.hidden || settingsDlg.open || (e.target as HTMLElement).matches("input, textarea, select")) return;
   if (e.key === "ArrowRight" || e.key === " ") turn(1);
   if (e.key === "ArrowLeft") turn(-1);
   if (e.key === "Escape") closeSheet();

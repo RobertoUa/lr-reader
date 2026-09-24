@@ -60,6 +60,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
   background: var(--btn); color: var(--fg); border-radius: 16px 16px 0 0; box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); font-size: 17px; line-height: 1.4; }
 #sheet h3 { margin: 0; font-size: 22px; padding-right: 48px; }
+#sheet .phrase-edit { display: block; width: calc(100% - 52px); box-sizing: border-box; font: inherit; font-size: 20px; font-weight: 600; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; resize: none; field-sizing: content; }
 #sheet .x { position: absolute; top: 10px; right: 10px; font-size: 24px; line-height: 1; padding: 0; background: var(--bg); border-radius: 50%; }
 #sheet .lemma { color: var(--muted); font-size: 15px; margin-top: 2px; }
 #sheet .tr { margin: 8px 0; font-size: 18px; }

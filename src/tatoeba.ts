@@ -12,7 +12,7 @@ export const supported = (sl: string) => sl in ISO3;
 export async function examples(form: string, lemma: string, sl: string, tl: string): Promise<Example[]> {
   const to = [...new Set([ISO3[tl], "eng"].filter(Boolean))].join(",");
   const get = async (word: string): Promise<Sentence[]> => {
-    const q = new URLSearchParams({ lang: ISO3[sl], q: `=${word}`, "trans:lang": to, "showtrans:lang": to, sort: "random", limit: "5", word_count: "4-16" });
+    const q = new URLSearchParams({ lang: ISO3[sl], q: word.includes(" ") ? `"${word}"` : `=${word}`, "trans:lang": to, "showtrans:lang": to, sort: "random", limit: "5", word_count: "4-16" });
     const r = await fetch(`https://api.tatoeba.org/unstable/sentences?${q}`);
     if (!r.ok) throw new Error(`Tatoeba: ${r.status} ${r.statusText}`);
     return (await r.json()).data;
