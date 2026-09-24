@@ -799,6 +799,7 @@ function relayout() {
 // ---- Word sheet ----
 
 let current: HTMLElement | null = null;
+const CLOSE = `<button class="x" data-act="close" aria-label="Close">&times;</button>`;
 
 function closeSheet() {
   sheet.hidden = true;
@@ -817,7 +818,7 @@ async function openWord(w: HTMLElement) {
   const si = Number((w.parentElement as HTMLElement).dataset.s);
   if (settings().autoSay) speak(form, sheetError);
   sheet.hidden = false;
-  sheet.innerHTML = `<h3>${esc(form)}</h3><div class="tr">...</div>`;
+  sheet.innerHTML = CLOSE + `<h3>${esc(form)}</h3><div class="tr">...</div>`;
   let err = "";
   let tr: lr.Translated | undefined;
   try {
@@ -854,7 +855,7 @@ async function openWord(w: HTMLElement) {
   }
   const stage = stageOf(lemma);
   const btn = (s: string, label: string) => `<button data-stage="${s}" class="${stage === s ? "on" : ""}">${label}</button>`;
-  sheet.innerHTML = `<h3>${esc(form)}</h3>
+  sheet.innerHTML = CLOSE + `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
     ${tr || enSent ? `<div class="sent"><b>${esc(tr?.tr || enSent)}</b></div>` : ""}
@@ -1294,7 +1295,7 @@ async function openPhrase() {
   const sl = settings().sl;
   phrase = null;
   sheet.hidden = false;
-  sheet.innerHTML = `<h3>${esc(text)}</h3><div class="tr">...</div>`;
+  sheet.innerHTML = CLOSE + `<h3>${esc(text)}</h3><div class="tr">...</div>`;
   let tr: lr.Translated | undefined;
   let err = "";
   try {
@@ -1315,7 +1316,7 @@ async function openPhrase() {
   phrase = { text, tr: tr?.tr || "", nlp: tr?.nlp || [], si };
   const key = lr.phraseKey(text, sl);
   const queued = outbox.some((x) => x.key === key);
-  sheet.innerHTML = `<h3>${esc(text)}</h3>
+  sheet.innerHTML = CLOSE + `<h3>${esc(text)}</h3>
     <div class="tr">${tr ? esc(tr.tr) : esc(enPhrase)}</div>
     ${trs[si] || enSent ? `<div class="sent">${esc(sents[si])}<b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
     ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
@@ -1352,6 +1353,7 @@ function savePhrase(b: HTMLElement) {
 sheet.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
+  if (b.dataset.act === "close") return closeSheet();
   if (b.dataset.act === "save-phrase") savePhrase(b);
   if (b.dataset.saveEx) saveExample(b);
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
@@ -1504,7 +1506,7 @@ async function readAloudAi(voice: string, from: number, run: number) {
     if (run !== readingRun) return;
     stopReading();
     sheet.hidden = false;
-    sheet.innerHTML = `<div class="err">Read aloud: ${esc(msg(e))}</div>`;
+    sheet.innerHTML = CLOSE + `<div class="err">Read aloud: ${esc(msg(e))}</div>`;
   }
   if (run === readingRun) stopReading();
 }
