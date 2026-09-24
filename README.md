@@ -79,7 +79,7 @@ Speech:
 
 Examples, search, page numbers:
 
-1. Word sheet > Examples: 5 sentences from Tatoeba with translations (tap one to hear it). Word sheet > Search in book: up to 5 other sentences from this book with the same form or its
+1. Word sheet > Examples: 5 sentences from Tatoeba with translations (tap one to hear it; Save adds it to Language Reactor saved phrases). Word sheet > Search in book: up to 5 other sentences from this book with the same form or its
    dictionary form, with translations; tap one to jump there (the sentence flashes blue), then
    "Back to where you were" returns to the sentence you were reading. Same after a search jump.
 2. Reader > menu > Search: accent- and case-insensitive search across the book; tap a result to jump.

@@ -103,6 +103,10 @@ dialog .row #test-voice { margin-bottom: 12px; }
 button.found { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 10px 12px; height: auto;
   background: var(--bg); font-family: var(--family); font-size: 16px; line-height: 1.35; }
 button.found b { color: var(--accent); }
+.ex { display: flex; gap: 8px; align-items: stretch; }
+.ex .found { flex: 1; min-width: 0; }
+.ex button { background: var(--bg); }
+.ex button.on { background: var(--accent); color: #fff; }
 button.found i { color: var(--muted); font-style: normal; font-family: -apple-system, sans-serif; font-size: 14px; }
 button.found small { color: var(--muted); font-size: 12px; font-family: -apple-system, sans-serif; }
 .s.flash { background: rgba(80, 150, 255, 0.25); transition: background 1s; }

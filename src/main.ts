@@ -963,7 +963,11 @@ async function examples() {
     shownExamples = found;
     const mark = (t: string) => esc(t).replace(wordRe([form, lemma].map(esc)), "<b>$1</b>");
     box.innerHTML = found.length
-      ? found.map((x, i) => `<button class="found" data-say="${i}"><span>${mark(x.text)}</span>${x.tr ? `<i>${esc(x.tr)}</i>` : ""}</button>`).join("") +
+      ? found.map((x, i) => {
+          const saved = outbox.some((o) => o.key === lr.phraseKey(x.text, sl));
+          return `<div class="ex"><button class="found" data-say="${i}"><span>${mark(x.text)}</span>${x.tr ? `<i>${esc(x.tr)}</i>` : ""}</button>` +
+            `<button data-save-ex="${i}" class="${saved ? "on" : ""}">${saved ? "Saved" : "Save"}</button></div>`;
+        }).join("") +
         `<div class="sub">Tap a sentence to hear it. Sentences from Tatoeba (CC BY 2.0 FR).</div>`
       : `<div class="sub">No example sentences found for "${esc(form)}".</div>`;
   } catch (e) {
@@ -1300,6 +1304,20 @@ async function openPhrase() {
     <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button></div>`;
 }
 
+// Saved like a selected phrase; the draft is completed with a translation when the outbox syncs.
+function saveExample(b: HTMLElement) {
+  const x = shownExamples[Number(b.dataset.saveEx)], w = current;
+  if (!x || !w) return;
+  const { sl, email } = settings();
+  const draft: Draft = { draft: true, itemType: "PHRASE", learningStage: "LEARNING", phrase: x.text, text: x.text, prev: null, next: null, ref: where0(Number((w.parentElement as HTMLElement).dataset.s)).ref };
+  outbox = enqueue(outbox, "save", lr.phraseKey(x.text, sl), email, draft);
+  cacheSet("outbox", outbox);
+  b.classList.add("on");
+  b.textContent = "Saved";
+  renderSync();
+  flushOutbox();
+}
+
 function savePhrase(b: HTMLElement) {
   if (!phrase) return;
   const tr = trs[phrase.si];
@@ -1317,6 +1335,7 @@ sheet.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
   if (b.dataset.act === "save-phrase") savePhrase(b);
+  if (b.dataset.saveEx) saveExample(b);
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
