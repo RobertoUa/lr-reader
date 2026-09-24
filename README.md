@@ -57,7 +57,7 @@ Phrases and offline preparation:
 
 Bookmarks:
 
-1. Reader > menu > Bookmarks > Bookmark this page: the footer shows a star on that page. The list shows
+1. Reader > menu > Bookmarks > Bookmark this page, or word popup > Bookmark here (that sentence, underlined dotted): the footer shows a star on that page. The list shows
    every bookmark with its chapter and text; tap one to jump there ("Back to where you were" returns).
    On a bookmarked page the button reads "Remove bookmark here".
 

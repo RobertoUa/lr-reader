@@ -694,6 +694,7 @@ function goto(p: number) {
   meta.pos = { ch, s };
   meta.done = offsets[ch] + s;
   where.textContent = `${pageBookmark() ? "\u2605 " : ""}${book.chapters[ch].title} \u00b7 ${page + 1}/${pages()}${bookPage()} \u00b7 ${pct(meta.done, meta.sentences)}%`;
+  markBookmarks();
   const { id, pos, done } = meta;
   const bookmarks = meta.bookmarks;
   getMeta(id).then((m) => m && putMeta({ ...m, pos, done, bookmarks }));
@@ -799,7 +800,7 @@ function relayout() {
 // ---- Word sheet ----
 
 let current: HTMLElement | null = null;
-const TOOLS = (more = true) => `<button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button>${more ? `<button data-act="more">More</button>` : ""}<button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+const TOOLS = (si: number, more = true) => `${bmOf(si) ? `<button data-act="bookmark" class="on">Bookmarked</button>` : `<button data-act="bookmark">Bookmark here</button>`}<button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button>${more ? `<button data-act="more">More</button>` : ""}<button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
     <div id="explain" class="explain"></div>
     <div id="more"></div>
     <div id="examples"></div>`;
@@ -866,7 +867,7 @@ async function openWord(w: HTMLElement) {
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button>${TOOLS()}`;
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button>${TOOLS(si)}`;
   wordExtras(w, form, lemma, token?.pos || "", sents[si]);
 }
 
@@ -1096,6 +1097,24 @@ $("bookmark-toggle").addEventListener("click", () => {
   goto(page);
   renderBookmarks();
 });
+
+const bmOf = (s: number) => (meta.bookmarks || []).find((x) => x.ch === ch && x.s === s);
+// A bookmark on the exact sentence of the tapped word or phrase, not just the page.
+function bookmarkSentence(b: HTMLElement) {
+  const w = subject()?.w;
+  if (!w) return;
+  const s = Number((w.parentElement as HTMLElement).dataset.s);
+  const had = bmOf(s);
+  meta.bookmarks = had ? meta.bookmarks!.filter((x) => x !== had) : [...(meta.bookmarks || []), { ch, s, text: sents[s].slice(0, 140), at: Date.now() }];
+  b.textContent = had ? "Bookmark here" : "Bookmarked";
+  b.classList.toggle("on", !had);
+  goto(page);
+}
+function markBookmarks() {
+  const mine = new Set((meta.bookmarks || []).filter((x) => x.ch === ch).map((x) => x.s));
+  content.querySelectorAll(".s.bm").forEach((x) => x.classList.remove("bm"));
+  mine.forEach((s) => spans[s]?.classList.add("bm"));
+}
 
 // ---- Summaries ----
 
@@ -1336,7 +1355,7 @@ async function openPhrase(edited?: string) {
     ${trs[si] || enSent ? `<div class="sent"><b>${esc(trs[si]?.tr || enSent)}</b></div>` : ""}
     ${err ? `<div class="${enPhrase ? "sub" : "err"}">${esc(err)}</div>` : ""}
     <div class="sub">Edit the phrase above, or tap words in the text to extend it.</div>
-    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain phrase</button>${TOOLS(false)}`;
+    <div class="act"><button data-act="save-phrase" class="${queued ? "on" : ""}">${queued ? "Saved" : "Save phrase"}</button><button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain phrase</button>${TOOLS(si, false)}`;
 }
 
 // Saved like a selected phrase; the draft is completed with a translation when the outbox syncs.
@@ -1380,6 +1399,7 @@ sheet.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b) return;
   if (b.dataset.act === "close") return closeSheet();
+  if (b.dataset.act === "bookmark") return bookmarkSentence(b);
   if (b.dataset.act === "save-phrase") savePhrase(b);
   if (b.dataset.saveEx) saveExample(b);
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
