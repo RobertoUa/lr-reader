@@ -1,5 +1,6 @@
 import { createStore, get, getMany, set, setMany, del, delMany, keys, values } from "idb-keyval";
 import type { Book } from "./epub";
+import type { Level } from "./freq";
 
 export type Pos = { ch: number; s: number };
 export type Meta = {
@@ -14,6 +15,7 @@ export type Meta = {
   prepared: number;
   preparedChapters?: number[];
   bookmarks?: Bookmark[];
+  level?: Level;
 };
 export type Bookmark = { ch: number; s: number; text: string; at: number };
 

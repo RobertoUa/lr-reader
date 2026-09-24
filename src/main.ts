@@ -9,7 +9,7 @@ import * as S from "./source";
 import * as MT from "./mt";
 import * as Study from "./study";
 import * as Freq from "./freq";
-import { SPEECH_VOICES, speech, synonyms as aiSynonyms } from "./aitr";
+import { SPEECH_VOICES, bookLevel, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -374,13 +374,16 @@ async function showLibrary() {
   for (const m of list) {
     const li = document.createElement("li");
     li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
-      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%</div>
+      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%<span class="level"></span></div>
       <div class="sub prep"></div></button>
       <button class="prep-btn">${preparing?.id === m.id ? "Pause" : "Prepare"}</button>
       <button class="del" aria-label="Delete">Delete</button>`;
     li.querySelector(".prep-btn")!.addEventListener("click", () => (preparing?.id === m.id ? preparing.ctl.abort() : askPrepare(m.id)));
     if (preparing?.id === m.id) preparing.line = li.querySelector(".prep") as HTMLElement;
     li.querySelector(".open")!.addEventListener("click", () => openBook(m.id));
+    levelOf(m).then((l) => {
+      if (l?.cefr || l?.label) li.querySelector(".level")!.textContent = ` \u00b7 ${l.cefr ? `${l.cefr}: ${l.why}` : `${l.label} (${l.common}% common words)`}`;
+    }, () => {});
     li.querySelector(".del")!.addEventListener("click", async () => {
       if (!confirm(`Delete "${m.title}" and all its data?`)) return;
       if (preparing?.id === m.id) preparing.ctl.abort();
@@ -389,6 +392,30 @@ async function showLibrary() {
     });
     books.append(li);
   }
+}
+
+// Worked out once per book and kept with it: an AI rating from sample passages when a key is set,
+// else word frequency.
+const levelRuns = new Map<string, Promise<Freq.Level | undefined>>();
+function levelOf(m: Meta) {
+  const cfg = aiForExtras();
+  if (m.level?.cefr || (m.level && !cfg)) return Promise.resolve(m.level);
+  if (!levelRuns.has(m.id)) levelRuns.set(m.id, rateBook(m, cfg).finally(() => levelRuns.delete(m.id)));
+  return levelRuns.get(m.id)!;
+}
+async function rateBook(m: Meta, cfg: ReturnType<typeof aiForExtras>) {
+  const b = await getBook(m.id);
+  if (!b) return m.level;
+  const sents = b.chapters.flatMap((c) => c.blocks.flatMap((x) => x.sentences)).filter((t) => !Freq.isEnglish(t));
+  let level = m.level || (Freq.supported(settings().sl) ? await Freq.difficulty(sents) : undefined);
+  if (cfg) {
+    // Six runs of consecutive sentences from 10% to 90% of the book, past the front and back matter.
+    const sample = [0, 1, 2, 3, 4, 5].map((k) => sents.slice(Math.floor(sents.length * (0.1 + 0.16 * k))).slice(0, 8).join(" ").slice(0, 500)).join("\n\n");
+    level = { ...level, ...(await bookLevel(sample, lang(), cfg).catch(() => ({}))) };
+  }
+  const fresh = await getMeta(m.id);
+  if (fresh && level) await putMeta({ ...fresh, level });
+  return level;
 }
 
 // ---- Prepare for offline ----

@@ -107,6 +107,14 @@ export async function synonyms(lemma: string, pos: string, sentence: string, lan
   return (await ask<{ synonyms: string[] }>(cfg, system, user, SYNONYM_SCHEMA)).synonyms;
 }
 
+const CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"];
+export async function bookLevel(sample: string, lang: Lang, cfg: AiCfg): Promise<{ cefr: string; why: string }> {
+  const system =
+    `Rate how hard these ${langName(lang.sl)} passages from one book are for a learner: the CEFR level needed to read it ` +
+    `comfortably, from vocabulary, grammar and sentence length, and a reason in under 10 English words.`;
+  return ask(cfg, system, sample, obj({ cefr: { type: "string", enum: CEFR }, why: { type: "string" } }));
+}
+
 export const SPEECH_VOICES = ["marin", "cedar", "coral", "sage", "ash"];
 
 // Speech from OpenAI, as a data URL so it caches like Language Reactor's audio.
