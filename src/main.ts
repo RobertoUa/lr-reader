@@ -10,6 +10,7 @@ import * as MT from "./mt";
 import * as Study from "./study";
 import * as Freq from "./freq";
 import * as Tts from "./tts";
+import * as Tatoeba from "./tatoeba";
 import { SPEECH_VOICES, bookLevel, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
@@ -860,7 +861,7 @@ async function openWord(w: HTMLElement) {
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Show examples</button></div>
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
     <div id="more"></div>
     <div id="examples"></div>`;
   wordExtras(w, form, lemma, token?.pos || "", sents[si]);
@@ -942,11 +943,36 @@ $("return").addEventListener("click", () => {
 
 document.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("button.found");
+  if (b?.dataset.say) return speak(shownExamples[Number(b.dataset.say)].text, sheetError);
   if (b) jumpTo(Number(b.dataset.ci), Number(b.dataset.si));
 });
 
-// Up to 5 other sentences with the same form or dictionary form, going forward from here.
+// Example sentences from outside the book, cached per word so they also show offline.
+let shownExamples: Tatoeba.Example[] = [];
 async function examples() {
+  const w = current;
+  if (!w) return;
+  const box = $("examples");
+  const { sl, tl } = lang();
+  if (!Tatoeba.supported(sl)) return void (box.innerHTML = `<div class="sub">No example sentences for this language.</div>`);
+  const form = w.textContent!.toLowerCase(), { lemma } = lemmaFor(w);
+  box.innerHTML = `<div class="sub">...</div>`;
+  try {
+    const found = await cached(`ex|${sl}|${tl}|${form}|${lemma}`, () => Tatoeba.examples(form, lemma, sl, tl));
+    if (current !== w) return;
+    shownExamples = found;
+    const mark = (t: string) => esc(t).replace(wordRe([form, lemma].map(esc)), "<b>$1</b>");
+    box.innerHTML = found.length
+      ? found.map((x, i) => `<button class="found" data-say="${i}"><span>${mark(x.text)}</span>${x.tr ? `<i>${esc(x.tr)}</i>` : ""}</button>`).join("") +
+        `<div class="sub">Tap a sentence to hear it. Sentences from Tatoeba (CC BY 2.0 FR).</div>`
+      : `<div class="sub">No example sentences found for "${esc(form)}".</div>`;
+  } catch (e) {
+    if (current === w) box.innerHTML = `<div class="err">Examples: ${esc(msg(e))}</div>`;
+  }
+}
+
+// Up to 5 other sentences with the same form or dictionary form, going forward from here.
+async function inBook() {
   const w = current;
   if (!w) return;
   const box = $("examples");
@@ -1295,6 +1321,7 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
   if (b.dataset.act === "examples") examples();
+  if (b.dataset.act === "in-book") inBook();
 });
 
 // ---- Word log, review, read aloud, stats, density, backup ----

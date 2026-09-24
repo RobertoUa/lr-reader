@@ -54,7 +54,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   margins), search (accent-insensitive), bookmarks with footer star, "Back to where you were" after a
   jump (hides on page turn or chapter change).
 - Word sheet: translation, dictionary form, part of speech, sentence translation, More, Play, Play
-  sentence, Show examples (5 sentences from the book with the same form or dictionary form).
+  sentence, Examples (5 Tatoeba sentences with human translations, cached per word), Search in book (5 sentences from the book with the same form or dictionary form).
 - Phrases: long-press and drag, translation, Save phrase, Play.
 - Highlighting of LEARNING words by dictionary form.
 - Marks and phrases through an IndexedDB outbox: offline drafts completed at sync time, undo while
