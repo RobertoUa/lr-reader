@@ -862,7 +862,7 @@ async function openWord(w: HTMLElement) {
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button><button data-act="explain-sentence">Explain sentence</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button><button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
     <div id="explain" class="explain"></div>
     <div id="more"></div>
     <div id="examples"></div>`;
@@ -949,18 +949,19 @@ document.addEventListener("click", (e) => {
   if (b) jumpTo(Number(b.dataset.ci), Number(b.dataset.si));
 });
 
-async function explainCurrent(what: "word" | "sentence") {
+async function explainCurrent(what: "word" | "sentence" | "paragraph") {
   const w = current;
   if (!w) return;
   const box = $("explain");
   const cfg = aiForExtras();
   if (!cfg) return void (box.innerHTML = `<div class="sub">Explanations need a ChatGPT or Claude key in Settings.</div>`);
-  const sentence = sents[Number((w.parentElement as HTMLElement).dataset.s)], word = w.textContent!;
+  const s = w.parentElement as HTMLElement, word = w.textContent!;
+  const text = what === "paragraph" ? [...s.parentElement!.querySelectorAll<HTMLElement>(".s")].map((x) => sents[Number(x.dataset.s)]).join(" ") : sents[Number(s.dataset.s)];
   const { sl, tl } = lang();
   box.innerHTML = `<div class="sub">...</div>`;
   try {
-    const text = await cached(`expl|${what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${sentence}`, () => explain(what, word, sentence, lang(), cfg));
-    if (current === w) box.innerHTML = esc(text).replace(/\n+/g, "<br>");
+    const out = await cached(`expl|${what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg));
+    if (current === w) box.innerHTML = esc(out).replace(/\n+/g, "<br>");
   } catch (e) {
     if (current === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
   }
@@ -1359,7 +1360,7 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
-  if (b.dataset.act === "explain-word" || b.dataset.act === "explain-sentence") explainCurrent(b.dataset.act === "explain-word" ? "word" : "sentence");
+  if (b.dataset.act?.startsWith("explain-")) explainCurrent(b.dataset.act.slice(8) as "word" | "sentence" | "paragraph");
   if (b.dataset.act === "examples") examples();
   if (b.dataset.act === "in-book") inBook();
 });
