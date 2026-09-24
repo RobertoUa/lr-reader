@@ -33,7 +33,7 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - `epub.ts`, `pdf.ts` (pdf.js, lazy), `split.ts` (Intl.Segmenter sentences).
 - `db.ts`: IndexedDB via idb-keyval: `lr-meta` (book metadata), `lr-text` (books), `lr-cache` (everything
   else, prefixed keys: `tr2|`/`tr3|`/`trx|` translations, `hd|`/`hdl|`/`fd|` dictionary, `syn|`, `mt|`,
-  `tts|`, `sum|`/`sumlast|`, `wl|` word logs, `stats|`, `keys|` word list, `outbox`).
+  `tts|`, `expl|`, `ex|`, `sum|`/`sumlast|`, `wl|` word logs, `stats|`, `keys|` word list, `outbox`).
 - `outbox.ts`: queued marks; `afterFlush` merges by entry id. `prepare.ts`: offline preparation (paced pool).
 - `study.ts`: review scheduling, stats days, unknown-word density. `look.ts`: themes/fonts.
 - `mt.ts` + `mt.worker.ts`: offline es->en model (transformers.js) in a Web Worker; onnxruntime served

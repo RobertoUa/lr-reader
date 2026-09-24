@@ -11,7 +11,7 @@ import * as Study from "./study";
 import * as Freq from "./freq";
 import * as Tts from "./tts";
 import * as Tatoeba from "./tatoeba";
-import { SPEECH_VOICES, bookLevel, speech, synonyms as aiSynonyms } from "./aitr";
+import { SPEECH_VOICES, bookLevel, explain, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
 
@@ -857,11 +857,12 @@ async function openWord(w: HTMLElement) {
   sheet.innerHTML = `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
     <div class="tr">${entries.length ? entries.map(esc).join(", ") : err ? "" : "no translation"}</div>
-    <div class="sent">${esc(sents[si])}<b>${tr ? esc(tr.tr) : esc(enSent)}</b></div>
+    ${tr || enSent ? `<div class="sent"><b>${esc(tr?.tr || enSent)}</b></div>` : ""}
     <div class="sub" id="word-extra"></div>
     ${err ? `<div class="err">${esc(err)}</div>` : ""}
     ${offlineNote ? `<div class="sub">${offlineNote}</div>` : ""}
-    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+    <div class="act">${btn("LEARNING", "Learning")}${btn("KNOWN", "Known")}<button data-act="say">Play</button><button data-act="say-sentence">Play sentence</button><button data-act="explain-word">Explain word</button><button data-act="explain-sentence">Explain sentence</button><button data-act="more">More</button><button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+    <div id="explain" class="explain"></div>
     <div id="more"></div>
     <div id="examples"></div>`;
   wordExtras(w, form, lemma, token?.pos || "", sents[si]);
@@ -946,6 +947,23 @@ document.addEventListener("click", (e) => {
   if (b?.dataset.say) return speak(shownExamples[Number(b.dataset.say)].text, sheetError);
   if (b) jumpTo(Number(b.dataset.ci), Number(b.dataset.si));
 });
+
+async function explainCurrent(what: "word" | "sentence") {
+  const w = current;
+  if (!w) return;
+  const box = $("explain");
+  const cfg = aiForExtras();
+  if (!cfg) return void (box.innerHTML = `<div class="sub">Explanations need a ChatGPT or Claude key in Settings.</div>`);
+  const sentence = sents[Number((w.parentElement as HTMLElement).dataset.s)], word = w.textContent!;
+  const { sl, tl } = lang();
+  box.innerHTML = `<div class="sub">...</div>`;
+  try {
+    const text = await cached(`expl|${what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${sentence}`, () => explain(what, word, sentence, lang(), cfg));
+    if (current === w) box.innerHTML = esc(text).replace(/\n+/g, "<br>");
+  } catch (e) {
+    if (current === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
+  }
+}
 
 // Example sentences from outside the book, cached per word so they also show offline.
 let shownExamples: Tatoeba.Example[] = [];
@@ -1339,6 +1357,7 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
+  if (b.dataset.act === "explain-word" || b.dataset.act === "explain-sentence") explainCurrent(b.dataset.act === "explain-word" ? "word" : "sentence");
   if (b.dataset.act === "examples") examples();
   if (b.dataset.act === "in-book") inBook();
 });

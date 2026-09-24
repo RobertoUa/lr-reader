@@ -66,6 +66,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #sheet .sent b { color: var(--fg); font-weight: 400; display: block; margin-top: 4px; }
 #sheet .pos { margin-top: 8px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
 #sheet .err { color: #d33; margin: 8px 0; }
+#sheet .explain:not(:empty) { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg); font-size: 16px; }
 #sheet .act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 #sheet .act button { background: var(--bg); }
 #sheet .act button.on { background: var(--accent); color: #fff; }
