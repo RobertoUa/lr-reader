@@ -240,7 +240,9 @@ function fillVoices() {
   sel.innerHTML = `<option value="">Language Reactor (online, cached)</option>` + voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(voiceLabel(v))}</option>`).join("");
   sel.value = settings().voice;
 }
-speechSynthesis.addEventListener?.("voiceschanged", () => settingsDlg.open && fillVoices());
+// iOS lists no voices until they load, and its speechSynthesis supports only the on* handler.
+speechSynthesis.onvoiceschanged = () => settingsDlg.open && fillVoices();
+speechSynthesis.getVoices();
 
 // Language Reactor's speech endpoint answers BAD_REQUEST above 30 characters, so longer text needs a
 // device voice even when Language Reactor is the chosen voice.
