@@ -1692,7 +1692,7 @@ async function buildBackup(status: HTMLElement) {
   const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "looks|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
   const s: Record<string, unknown> = { ...settings() };
   if (!($("backup-secrets") as HTMLInputElement).checked) for (const k of SECRET) delete s[k];
-  const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), books, cache: cacheEntries };
+  const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), goal: pref("goal"), books, cache: cacheEntries };
   // One fixed name, so saving to the same iCloud folder replaces the previous backup.
   return new File([JSON.stringify(data)], "lr-reader-backup.json", { type: "application/json" });
 }
@@ -1710,6 +1710,7 @@ $("backup-import").addEventListener("change", async () => {
     const keep = Object.fromEntries(SECRET.map((k) => [k, (settings() as Record<string, unknown>)[k]]));
     pref("settings", JSON.stringify({ ...keep, ...data.settings }));
     if (data.look) pref("look", data.look);
+    if (data.goal) pref("goal", data.goal), (($("goal") as HTMLSelectElement).value = data.goal);
     outboxLoaded = false;
     status.textContent = `Restored ${data.books.length} books and ${data.cache.length} other records.`;
     loadWords();
