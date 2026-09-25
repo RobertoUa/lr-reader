@@ -30,7 +30,7 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - `source.ts`: where translations/dictionary data come from (LR or AI); cache keys per source.
 - `aitr.ts`: ChatGPT/Claude sentence translation + per-word lemma/POS/glosses, dictionary, synonyms.
 - `ai.ts` (Claude SDK summaries), `summary.ts` (prompt, OpenAI summaries, key-free chat links).
-- `epub.ts`, `pdf.ts` (pdf.js, lazy), `split.ts` (Intl.Segmenter sentences).
+- `epub.ts`, `pdf.ts` (pdf.js, lazy), `formats.ts` (TXT, FB2, MOBI with PalmDOC; chapters from heading lines), `split.ts` (Intl.Segmenter sentences).
 - `db.ts`: IndexedDB via idb-keyval: `lr-meta` (book metadata), `lr-text` (books), `lr-cache` (everything
   else, prefixed keys: `tr2|`/`tr3|`/`trx|` translations, `hd|`/`hdl|`/`fd|` dictionary, `syn|`, `mt|`,
   `tts|`, `expl|`, `ex|`, `sum|`/`sumlast|`, `wl|` word logs, `stats|`, `looks|` lookup counts, `keys|` word list, `outbox`).

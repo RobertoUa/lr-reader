@@ -21,7 +21,7 @@ const tagOf = (name: string): Block["tag"] => (/^h\d$/.test(name) ? "h" : name =
 // A block is an element with no block-level children; its text is split into sentences.
 // onId sees every id on the way, so a chapter can start at a TOC fragment inside a file.
 // ponytail: text sitting directly next to block siblings is dropped, rare in real books.
-function collect(el: Element, lang: string, onId: (id: string) => void, out: (b: Block) => void) {
+export function collect(el: Element, lang: string, onId: (id: string) => void, out: (b: Block) => void) {
   const name = el.localName.toLowerCase();
   if (SKIP.has(name)) return;
   if (el.id) onId(el.id);

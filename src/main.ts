@@ -1,5 +1,6 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
+import * as Formats from "./formats";
 import { type Bookmark, addBook, clearTranslations, getCacheByPrefix, putBook, setCacheMany, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
@@ -365,7 +366,7 @@ async function showLibrary() {
   reader.hidden = true;
   lib.hidden = false;
   const list = await listBooks();
-  books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Tap Import to add an EPUB or PDF.</li>`;
+  books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Tap Import to add an EPUB, PDF, MOBI, FB2 or TXT file.</li>`;
   $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
   for (const m of list) {
     const li = document.createElement("li");
@@ -513,11 +514,15 @@ file.addEventListener("change", async () => {
   say(`Importing ${f.name}...`);
   try {
     const data = new Uint8Array(await f.arrayBuffer());
-    const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+    const sl = settings().sl, n = f.name.toLowerCase();
     // pdf.js is large, so it loads only when a PDF is imported.
-    const book = isPdf
-      ? await (await import("./pdf")).parsePdf(data, f.name, settings().sl, (n, total) => say(`Importing ${f.name}: page ${n}/${total}...`))
-      : parseEpub(data, settings().sl);
+    const book = /\.pdf$/.test(n) || f.type === "application/pdf"
+      ? await (await import("./pdf")).parsePdf(data, f.name, sl, (k, total) => say(`Importing ${f.name}: page ${k}/${total}...`))
+      : /\.(mobi|azw3?|prc)$/.test(n) ? Formats.parseMobi(data, f.name, sl)
+      : /\.fb2(\.zip)?$/.test(n) ? Formats.parseFb2(data, f.name, sl)
+      : /\.txt$/.test(n) || f.type === "text/plain" ? Formats.parseTxt(data, f.name, sl)
+      : parseEpub(data, sl);
+    if (!book.chapters.length) throw new Error("no readable text found");
     const m = await addBook(book);
     say(`Imported "${m.title}": ${book.chapters.length} chapters, ${m.sentences} sentences.`);
     showLibrary();

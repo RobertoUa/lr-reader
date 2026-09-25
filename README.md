@@ -15,7 +15,7 @@ Source to "GitHub Actions" once).
 Milestone 1:
 
 1. Open the Pages URL in Safari, Share > Add to Home Screen, launch from the icon (no Safari bars).
-2. Import (Files app), EPUB or PDF, appears with "read 0%". A PDF needs a text layer; its
+2. Import (Files app), EPUB, PDF, MOBI, FB2 (.fb2 or .fb2.zip) or TXT, appears with "read 0%". A PDF needs a text layer; its
    chapters come from bookmarks, "Capitulo N" headings or chapter numbers, else every 10 pages.
 3. Open it: tap right third / swipe left = next page, left third / swipe right = previous.
    Chapter picker jumps; the Aa panel changes size, theme and font and keeps the current sentence on screen.
