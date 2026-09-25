@@ -20,7 +20,7 @@
 <main id="lib">
   <header class="bar">
     <h1>LR Reader</h1>
-    <button id="open-review">Review</button>
+    <button id="open-words">Words</button>
     <button id="open-settings" aria-label="Settings">Settings</button>
     <label class="btn">Import<input id="file" type="file" hidden></label>
   </header>
@@ -56,6 +56,12 @@
     <button data-menu="stats">Stats</button><button data-menu="review">Review</button></div>
   <div id="menu-out"></div>
 </div>
+<section id="words" hidden>
+  <header class="bar"><button id="words-close" aria-label="Close">&lsaquo;</button><h1>Words</h1><button id="open-review">Review</button></header>
+  <div class="look-row words-filter"><button data-wf="LEARNING" class="on">Learning</button><button data-wf="KNOWN">Known</button>
+    <input id="words-search" type="search" placeholder="Search" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+  <div id="words-list"></div>
+</section>
 <section id="review" hidden>
   <header class="bar"><button id="review-close" aria-label="Close">&lsaquo;</button><h1>Review</h1><span id="review-left" class="sub"></span></header>
   <div id="review-card"></div>

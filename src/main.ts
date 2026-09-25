@@ -1640,6 +1640,87 @@ async function updateReviewCount() {
   $("open-review").textContent = n ? `Review (${n})` : "Review";
 }
 $("open-review").addEventListener("click", () => openReview());
+
+// ---- Words: everything saved on Language Reactor plus words marked here, by status ----
+
+const wordsEl = $("words"), wordsList = $("words-list");
+let wordsFilter: lr.Stage = "LEARNING";
+let wordRows: { lemma: string; stage: lr.Stage; e?: Study.WordEntry }[] = [];
+async function openWords() {
+  closeSheet();
+  wordsEl.hidden = false;
+  wordsList.innerHTML = `<div class="sub">...</div>`;
+  await loadWords();
+  const sl = settings().sl;
+  const local = new Map<string, Study.WordEntry>();
+  for (const e of await allWords()) if (!local.has(e.lemma) || local.get(e.lemma)!.at < e.at) local.set(e.lemma, e);
+  const lemmas = new Set([...Object.keys(synced), ...local.keys(), ...outbox.filter((x) => x.key.startsWith("WORD|") && x.key.endsWith(`|${sl}`)).map((x) => lemmaOf(x.key))]);
+  wordRows = [...lemmas].flatMap((lemma) => {
+    const stage = stageOf(lemma, lemma, sl);
+    return stage ? [{ lemma, stage, e: local.get(lemma) }] : [];
+  });
+  wordRows.sort((a, b) => (b.e?.at || 0) - (a.e?.at || 0) || a.lemma.localeCompare(b.lemma));
+  wordsEl.hidden = false;
+  renderWords();
+}
+function renderWords() {
+  const q = fold(($("words-search") as HTMLInputElement).value.trim());
+  const counts = { LEARNING: 0, KNOWN: 0 } as Record<string, number>;
+  wordRows.forEach((r) => counts[r.stage]++);
+  wordsEl.querySelectorAll<HTMLElement>("[data-wf]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.wf === wordsFilter);
+    b.textContent = `${b.dataset.wf === "KNOWN" ? "Known" : "Learning"} (${counts[b.dataset.wf!]})`;
+  });
+  const rows = wordRows.filter((r) => r.stage === wordsFilter && (!q || fold(r.lemma).includes(q) || fold(r.e?.glosses.join(" ") || "").includes(q)));
+  // ponytail: first 300 rows only; search narrows a long list.
+  wordsList.innerHTML = rows.length
+    ? rows.slice(0, 300).map((r) => {
+        const i = wordRows.indexOf(r), e = r.e;
+        const ctx = e ? esc(e.text).replace(wordRe([e.form, e.lemma].map(esc)), "<b>$1</b>") : "";
+        return `<div class="wrow"><div><b>${esc(r.lemma)}</b>${e?.glosses.length ? ` <span class="sub">${esc(e.glosses.join(", "))}</span>` : ""}</div>` +
+          (e ? `<button class="ctx" data-wgo="${i}">${ctx}<small> \u00b7 ${esc(e.bookTitle)}</small></button>` : "") +
+          `<div class="act">${e ? `<button data-wset="${i}">${r.stage === "KNOWN" ? "Move to Learning" : "Mark Known"}</button>` : ""}<button data-wdel="${i}">Remove</button></div></div>`;
+      }).join("") + (rows.length > 300 ? `<div class="sub">${rows.length - 300} more; search to find them.</div>` : "")
+    : `<div class="sub">${q ? "No matches." : "No words here yet."}</div>`;
+}
+wordsEl.addEventListener("click", async (ev) => {
+  const t = (ev.target as HTMLElement).closest<HTMLElement>("button");
+  if (!t) return;
+  if (t.dataset.wf) return (wordsFilter = t.dataset.wf as lr.Stage), renderWords();
+  const r = wordRows[Number(t.dataset.wgo ?? t.dataset.wset ?? t.dataset.wdel)];
+  if (!r) return;
+  if (t.dataset.wgo && r.e) {
+    wordsEl.hidden = true;
+    await openBook(r.e.bookId);
+    return jumpTo(r.e.ch, r.e.si);
+  }
+  const next = t.dataset.wdel ? undefined : r.stage === "KNOWN" ? "LEARNING" : "KNOWN";
+  setLemmaStage(r.lemma, next, r.e);
+  if (next) r.stage = next;
+  else wordRows.splice(wordRows.indexOf(r), 1);
+  renderWords();
+});
+$("words-search").addEventListener("input", renderWords);
+$("open-words").addEventListener("click", openWords);
+$("words-close").addEventListener("click", () => ((wordsEl.hidden = true), showLibrary()));
+
+// Status change outside the reader. A new status needs the word's sentence as context, so words only on
+// Language Reactor (no sentence here) can be removed but not moved.
+function setLemmaStage(lemma: string, next: lr.Stage | undefined, e?: Study.WordEntry) {
+  const { sl, email } = settings();
+  const key = lr.wordKey(lemma, sl);
+  if (!next) outbox = lemma in synced || sending.has(key) ? enqueue(outbox, "remove", key, email) : drop(outbox, key);
+  else if (e) {
+    const draft: Draft = { draft: true, itemType: "WORD", learningStage: next, offset: e.offset, text: e.text, prev: e.prev, next: e.next, ref: e.ref };
+    outbox = enqueue(outbox, "save", key, email, draft);
+  } else return;
+  cacheSet("outbox", outbox);
+  renderSync();
+  flushOutbox();
+  if (!e) return;
+  if (next) saveEntry({ ...e, stage: next });
+  else cacheGet<Record<string, Study.WordEntry>>(logKey(e.bookId)).then((log) => log && (delete log[lemma], cacheSet(logKey(e.bookId), log)));
+}
 $("review-close").addEventListener("click", () => {
   reviewEl.hidden = true;
   if (!lib.hidden) showLibrary();
