@@ -108,12 +108,12 @@ export async function synonyms(lemma: string, pos: string, sentence: string, lan
 }
 
 // A short note for a learner, in the learner's language, on a word as used in its sentence or on the sentence.
-export async function explain(what: "word" | "sentence" | "paragraph", word: string, text: string, lang: Lang, cfg: AiCfg): Promise<string> {
+export async function explain(what: "word" | "sentence" | "paragraph", word: string, text: string, lang: Lang, cfg: AiCfg, inBookLang = false): Promise<string> {
   const task =
     what === "word"
       ? `Explain the ${langName(lang.sl)} ${word.includes(" ") ? "phrase" : "word"} "${word}" in two short sentences: what it means in general, then what it means in this sentence. No grammar.`
       : `Explain this ${langName(lang.sl)} ${what}: its meaning, then the grammar and phrases a learner may not know (tenses, idioms, word order).`;
-  const system = `You help a learner reading ${langName(lang.sl)}. ${task} Answer in ${langName(lang.tl)}, plain text, no markdown, under ${what === "paragraph" ? 150 : what === "word" ? 40 : 80} words.`;
+  const system = `You help a learner reading ${langName(lang.sl)}. ${task} ${inBookLang ? `Answer in simple ${langName(lang.sl)} (A2 level: common words, short sentences)` : `Answer in ${langName(lang.tl)}`}, plain text, no markdown, under ${what === "paragraph" ? 150 : what === "word" ? 40 : 80} words.`;
   const label = what === "paragraph" ? "Paragraph" : "Sentence";
   return (await ask<{ explanation: string }>(cfg, system, `${label}: ${text}`, obj({ explanation: { type: "string" } }))).explanation;
 }

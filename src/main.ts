@@ -966,6 +966,7 @@ function subject() {
   return w && text ? { w, text } : null;
 }
 
+// Explanations come in the reader's language, or in simple book language; the choice is remembered.
 async function explainCurrent(what: "word" | "sentence" | "paragraph") {
   const sub = subject();
   if (!sub) return;
@@ -976,10 +977,12 @@ async function explainCurrent(what: "word" | "sentence" | "paragraph") {
   const s = w.parentElement as HTMLElement, word = sub.text;
   const text = what === "paragraph" ? [...s.parentElement!.querySelectorAll<HTMLElement>(".s")].map((x) => sents[Number(x.dataset.s)]).join(" ") : sents[Number(s.dataset.s)];
   const { sl, tl } = lang();
+  const inSl = pref("explainIn") === "sl", name = (c: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c;
   box.innerHTML = `<div class="sub">...</div>`;
   try {
-    const out = await cached(`expl|${what === "word" ? "word2" : what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg));
-    if (subject()?.w === w) box.innerHTML = esc(out).replace(/\n+/g, "<br>");
+    const out = await cached(`expl|${what === "word" ? "word2" : what}|${sl}|${inSl ? `${sl}-simple` : tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg, inSl));
+    if (subject()?.w === w)
+      box.innerHTML = esc(out).replace(/\n+/g, "<br>") + `<div><button class="link" data-explain-lang="${what}">${inSl ? `In ${esc(name(tl))}` : `In simple ${esc(name(sl))}`}</button></div>`;
   } catch (e) {
     if (subject()?.w === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
   }
@@ -1416,6 +1419,10 @@ sheet.addEventListener("click", (e) => {
   if (b.dataset.stage) setStage(b.dataset.stage as lr.Stage);
   if (b.dataset.act === "say" || b.dataset.act === "say-sentence") play(b.dataset.act);
   if (b.dataset.act === "more") more();
+  if (b.dataset.explainLang) {
+    pref("explainIn", pref("explainIn") === "sl" ? "tl" : "sl");
+    return void explainCurrent(b.dataset.explainLang as "word" | "sentence" | "paragraph");
+  }
   if (b.dataset.act?.startsWith("explain-")) explainCurrent(b.dataset.act.slice(8) as "word" | "sentence" | "paragraph");
   if (b.dataset.act === "examples") examples();
   if (b.dataset.act === "in-book") inBook();

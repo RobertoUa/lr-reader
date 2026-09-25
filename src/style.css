@@ -70,6 +70,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #sheet .sent b { color: var(--fg); font-weight: 400; display: block; margin-top: 4px; }
 #sheet .pos { margin-top: 8px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
 #sheet .err { color: #d33; margin: 8px 0; }
+#sheet .explain .link { background: none; min-height: 0; padding: 6px 0 0; color: var(--accent); font-size: 14px; }
 #sheet .explain:not(:empty) { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg); font-size: 16px; }
 #sheet .act { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 #sheet .act button, #sheet .ex > button:not(.found) { min-height: 34px; min-width: 0; padding: 0 10px; font-size: 14px; border-radius: 8px; }
