@@ -67,6 +67,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   speak on tap.
 - Offline English fallback: opus-mt es-en in the browser (about 110 MB), runtime served from the app.
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
+- Library: daily reading goal (Settings, default 15 min) with streak; Mark as finished (reader menu) moves a book under Finished.
 - Study tools (reader menu): word list per book, read aloud (device voice, auto page turn), stats (time,
   pages, words marked per day; unknown-word density per page and chapter), review with spaced
   repetition (Leitner 1/3/7/14/30 days; Known also marks KNOWN on Language Reactor).

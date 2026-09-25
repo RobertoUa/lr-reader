@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { dayKey, density, due, grade, INTERVALS, lastDays, type WordEntry } from "./study";
+import { dayKey, density, due, grade, INTERVALS, lastDays, streak, type WordEntry } from "./study";
 
 const entry = (over: Partial<WordEntry> = {}): WordEntry => ({
   lemma: "casa", form: "casas", stage: "LEARNING", bookId: "b", bookTitle: "B", ch: 0, si: 0, offset: 0, text: "", tr: "",
@@ -31,4 +31,13 @@ test("density counts distinct words missing from both lists", () => {
 test("day keys", () => {
   expect(dayKey(Date.UTC(2026, 8, 23, 12))).toMatch(/^2026-09-2\d$/);
   expect(lastDays(3, Date.UTC(2026, 8, 23, 12))).toHaveLength(3);
+});
+
+test("streak counts goal days in a row, today's open goal does not break it", () => {
+  const now = new Date(2026, 8, 25, 20).getTime();
+  const ms: Record<string, number> = { "2026-09-25": 5, "2026-09-24": 20, "2026-09-23": 30, "2026-09-21": 50 };
+  expect(streak((d) => ms[d] || 0, 20, now)).toBe(2);
+  ms["2026-09-25"] = 25;
+  expect(streak((d) => ms[d] || 0, 20, now)).toBe(3);
+  expect(streak(() => 0, 20, now)).toBe(0);
 });

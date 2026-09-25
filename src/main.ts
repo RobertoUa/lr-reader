@@ -365,13 +365,16 @@ async function showLibrary() {
   closeSheet();
   reader.hidden = true;
   lib.hidden = false;
-  const list = await listBooks();
+  // Finished books go last, under their own heading.
+  const list = (await listBooks()).sort((a, b) => Number(!!a.finished) - Number(!!b.finished));
   books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Tap Import to add an EPUB, PDF, MOBI, FB2 or TXT file.</li>`;
+  showGoal();
   $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
   for (const m of list) {
+    if (m.finished && m === list.find((x) => x.finished)) books.insertAdjacentHTML("beforeend", `<li class="group">Finished</li>`);
     const li = document.createElement("li");
     li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
-      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}read ${pct(m.done, m.sentences)}% &middot; prepared ${m.prepared}%<span class="level"></span></div>
+      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}${m.finished ? "finished" : `read ${pct(m.done, m.sentences)}%`} &middot; prepared ${m.prepared}%<span class="level"></span></div>
       <div class="sub prep"></div></button>
       <button class="prep-btn">${preparing?.id === m.id ? "Pause" : "Prepare"}</button>
       <button class="del" aria-label="Delete">Delete</button>`;
@@ -1442,6 +1445,15 @@ async function saveEntry(e: Study.WordEntry) {
   await cacheSet(logKey(e.bookId), log);
 }
 
+const goalMin = () => Number(pref("goal")) || 15;
+($("goal") as HTMLSelectElement).value = String(goalMin());
+$("goal").addEventListener("change", () => (pref("goal", ($("goal") as HTMLSelectElement).value), showGoal()));
+async function showGoal() {
+  const days = new Map((await getCacheByPrefix<Study.Day>("stats|")).map(([k, d]) => [k.slice(6), d.ms]));
+  const today = Math.floor((days.get(Study.dayKey()) || 0) / 60000), n = Study.streak((d) => days.get(d) || 0, goalMin() * 60000);
+  $("goal-line").textContent = `Today ${today} of ${goalMin()} min${today >= goalMin() ? " - goal met" : ""} \u00b7 ${n}-day streak`;
+}
+
 // Reading time counts the gap between page turns when it is under two minutes.
 let lastActive = 0;
 async function bumpStat(add: Partial<Study.Day>) {
@@ -1461,6 +1473,7 @@ $("menu").addEventListener("click", () => {
   closeSheet();
   if (!open) return;
   menuOut.innerHTML = "";
+  finishedLabel();
   menuPanel.hidden = false;
 });
 menuPanel.addEventListener("click", (e) => {
@@ -1471,7 +1484,15 @@ menuPanel.addEventListener("click", (e) => {
   if (what === "stats") showStats();
   if (what === "read") readAloud();
   if (what === "review") openReview(meta.id);
+  if (what === "finished") {
+    meta.finished = meta.finished ? undefined : Date.now();
+    const { id, finished } = meta;
+    getMeta(id).then((m) => m && putMeta({ ...m, finished }));
+    finishedLabel();
+    menuOut.innerHTML = `<div class="sub">${finished ? "Marked as finished; it moves to Finished in the library." : "Back in your reading list."}</div>`;
+  }
 });
+const finishedLabel = () => ($("finished-toggle").textContent = meta.finished ? "Not finished" : "Mark as finished");
 
 async function showWords() {
   const list = Object.values((await cacheGet<Record<string, Study.WordEntry>>(logKey(meta.id))) || {}).sort((a, b) => a.ch - b.ch || a.si - b.si);

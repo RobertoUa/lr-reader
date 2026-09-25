@@ -34,6 +34,15 @@ export const due = (all: WordEntry[], now = Date.now()) => all.filter((e) => e.s
 
 export type Day = { ms: number; pages: number; marked: number };
 export const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString("sv");
+// Days in a row with the goal met, ending today, or yesterday while today's goal is still open.
+export function streak(msOn: (day: string) => number, goalMs: number, now = Date.now()): number {
+  const noon = new Date(now);
+  noon.setHours(12, 0, 0, 0);
+  const day = (i: number) => msOn(dayKey(noon.getTime() - i * DAY));
+  let i = day(0) >= goalMs ? 0 : 1, n = 0;
+  while (day(i) >= goalMs) i++, n++;
+  return n;
+}
 export const lastDays = (n: number, now = Date.now()) => Array.from({ length: n }, (_, i) => dayKey(now - i * DAY));
 
 // Share of distinct words on a page or chapter that are in neither the Known nor the Learning list.

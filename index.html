@@ -25,6 +25,7 @@
     <label class="btn">Import<input id="file" type="file" hidden></label>
   </header>
   <p id="status" role="status"></p>
+  <p id="goal-line" class="sub"></p>
   <button id="backup-nudge" hidden>No backup this week. Save one to iCloud Drive</button>
   <ul id="books"></ul>
 </main>
@@ -51,7 +52,7 @@
   <div id="summary-out"></div>
 </div>
 <div id="menu-panel" class="panel" hidden>
-  <div class="look-row"><button id="search">Search</button><button id="bookmarks">Bookmarks</button><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
+  <div class="look-row"><button id="search">Search</button><button id="bookmarks">Bookmarks</button><button data-menu="finished" id="finished-toggle">Mark as finished</button><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
     <button data-menu="stats">Stats</button><button data-menu="review">Review</button></div>
   <div id="menu-out"></div>
 </div>
@@ -114,6 +115,7 @@
       <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
     <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
     <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
+    <label>Daily reading goal<select id="goal"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>

@@ -16,6 +16,7 @@ export type Meta = {
   preparedChapters?: number[];
   bookmarks?: Bookmark[];
   level?: Level;
+  finished?: number;
 };
 export type Bookmark = { ch: number; s: number; text: string; at: number };
 
