@@ -808,7 +808,7 @@ function relayout() {
 // ---- Word sheet ----
 
 let current: HTMLElement | null = null;
-const TOOLS = (si: number, more = true) => `${bmOf(si) ? `<button data-act="bookmark" class="on">Bookmarked</button>` : `<button data-act="bookmark">Bookmark here</button>`}<button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button>${more ? `<button data-act="more">More</button>` : ""}<button data-act="examples">Examples</button><button data-act="in-book">Search in book</button></div>
+const TOOLS = (si: number, more = true) => `<button data-act="explain-sentence">Explain sentence</button><button data-act="explain-paragraph">Explain paragraph</button>${more ? `<button data-act="more">More</button>` : ""}<button data-act="examples">Examples</button><button data-act="in-book">Search in book</button>${bmOf(si) ? `<button data-act="bookmark" class="on">Bookmarked</button>` : `<button data-act="bookmark">Bookmark here</button>`}</div>
     <div id="explain" class="explain"></div>
     <div id="more"></div>
     <div id="examples"></div>`;
