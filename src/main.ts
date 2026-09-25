@@ -978,7 +978,7 @@ async function explainCurrent(what: "word" | "sentence" | "paragraph") {
   const { sl, tl } = lang();
   box.innerHTML = `<div class="sub">...</div>`;
   try {
-    const out = await cached(`expl|${what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg));
+    const out = await cached(`expl|${what === "word" ? "word2" : what}|${sl}|${tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg));
     if (subject()?.w === w) box.innerHTML = esc(out).replace(/\n+/g, "<br>");
   } catch (e) {
     if (subject()?.w === w) box.innerHTML = `<div class="err">Explain: ${esc(msg(e))}</div>`;
