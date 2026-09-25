@@ -200,7 +200,7 @@ $("open-settings").addEventListener("click", async () => {
   fillVoices();
   mtStatus();
   const est = await navigator.storage?.estimate?.();
-  const persisted = await navigator.storage?.persisted?.();
+  const persisted = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.().catch(() => false));
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
   renderSync();
   settingsDlg.showModal();
@@ -1841,6 +1841,9 @@ const busy = () => !!document.querySelector("dialog[open]") || !sheet.hidden || 
 const maybeUpdate = () => applyUpdate && (Date.now() - started < 5000 || (!lib.hidden && !busy()) || document.visibilityState === "hidden") && applyUpdate();
 // The new worker takes over by itself (skipWaiting); the page keeps running the old code until it
 // reloads here. A change of controller on a page that already had one is an update.
+// Books, translations and audio live in IndexedDB; ask the browser not to evict them under storage pressure.
+navigator.storage?.persist?.().catch(() => {});
+
 if ("serviceWorker" in navigator) {
   const hadWorker = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
