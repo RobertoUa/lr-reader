@@ -11,6 +11,8 @@ let nativeVoices: Voice[] = [];
 let changed = () => {};
 let queue: { text: string; voice: Voice; rate: number; ev: Events }[] = [];
 let busy = false;
+// stop() bumps this; an utterance cancelled by it (iOS resolves speak() on cancel) must not fire onend.
+let gen = 0;
 
 export const voices = (): Voice[] => (native ? nativeVoices : speechSynthesis.getVoices());
 
@@ -41,15 +43,15 @@ async function next() {
   busy = !!u;
   if (!u) return;
   u.ev.onstart?.();
-  try {
-    await TextToSpeech.speak({ text: u.text, lang: u.voice.lang, rate: u.rate, voice: nativeVoices.indexOf(u.voice), queueStrategy: 0 });
-    u.ev.onend?.();
-  } catch {}
+  const g = gen;
+  await TextToSpeech.speak({ text: u.text, lang: u.voice.lang, rate: u.rate, voice: nativeVoices.indexOf(u.voice), queueStrategy: 0 }).catch(() => {});
+  if (g === gen) u.ev.onend?.();
   next();
 }
 
 export function stop() {
   if (!native) return speechSynthesis.cancel();
   queue = [];
+  gen++;
   TextToSpeech.stop().catch(() => {});
 }

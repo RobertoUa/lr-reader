@@ -15,10 +15,18 @@ function decode(data: Uint8Array, declared?: string): string {
   }
 }
 
-const HEADING = /^(cap\u00edtulo|capitulo|chapter|parte|part|libro|book)\s+([IVXLCDM]+|\d+|primer|segund|tercer|cuart|quint|sext|s\u00e9ptim|septim|octav|noven|d\u00e9cim|decim|un|one|two|three|first|second|third)|^(pr\u00f3logo|prologo|prologue|ep\u00edlogo|epilogo|epilogue)\b|^[IVXLC]{1,7}\.?$|^\d{1,3}\.?$/i;
+const KEYWORD = /^(cap\u00edtulo|capitulo|chapter|parte|part|libro|book)\s+(\S+)/i;
+const ORDINAL = /^(primer[oa]?|segund[oa]|tercer[oa]?|cuart[oa]|quint[oa]|sext[oa]|s[e\u00e9]ptim[oa]|octav[oa]|noven[oa]|d[e\u00e9]cim[oa]|uno|one|two|three|first|second|third)$/i;
+// "Capitulo IX", "Parte 2", "Libro primero", "Prologo" or a bare "XII"; the numeral must be the whole word,
+// so "Parte de mi vida" is not a heading.
+function headingLike(t: string): boolean {
+  if (/^(pr\u00f3logo|prologo|prologue|ep\u00edlogo|epilogo|epilogue)\b/i.test(t) || /^([IVXLC]{1,7}|\d{1,3})\.?$/.test(t)) return true;
+  const n = KEYWORD.exec(t)?.[2].replace(/[.,:;]+$/, "");
+  return !!n && (/^[IVXLCDM]+$/.test(n) || /^\d+$/.test(n) || ORDINAL.test(n));
+}
 const textOf = (b: Block) => b.sentences.join(" ");
 // A short block that starts with a capital and reads like "Capitulo II. ..." or "XII".
-const isHead = (b: Block) => b.tag === "h" || (textOf(b).length <= 300 && /^\p{Lu}|^\d/u.test(textOf(b)) && HEADING.test(textOf(b)));
+const isHead = (b: Block) => b.tag === "h" || (textOf(b).length <= 300 && /^\p{Lu}|^\d/u.test(textOf(b)) && headingLike(textOf(b)));
 
 // Chapters start at headings when the text has at least two; otherwise fallback() decides.
 // A heading right before another one (a table of contents) stays a plain paragraph.
@@ -37,8 +45,11 @@ const chunks = (blocks: Block[]): Chapter[] =>
 
 export function parseTxt(data: Uint8Array, name: string, lang = "es"): Book {
   const text = decode(data).replace(/\r\n?/g, "\n");
-  // Paragraphs are separated by blank lines when the file has them, else one per line.
-  const paras = (/\n\s*\n/.test(text) ? text.split(/\n\s*\n/) : text.split("\n")).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // Hard-wrapped text (short lines) keeps paragraphs between blank lines; otherwise each line is a paragraph,
+  // even when blank lines appear around headings.
+  const lines = text.split("\n"), filled = lines.filter((l) => l.trim()).length;
+  const wrapped = /\n\s*\n/.test(text) && lines.filter((l) => l.length > 100).length * 5 < filled;
+  const paras = (wrapped ? text.split(/\n\s*\n/) : lines).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean);
   const blocks = paras.map((p): Block => ({ tag: "p", sentences: sentences(p, lang) })).filter((b) => b.sentences.length);
   return { title: baseName(name), author: "", chapters: chapterize(blocks, () => chunks(blocks)) };
 }
@@ -108,6 +119,7 @@ export function parseMobi(data: Uint8Array, name: string, lang = "es"): Book {
       const e = 16 + headerLen;
       for (let i = 0, p = e + 12; i < h.getUint32(e + 8) && p + 8 <= r0.length; i++) {
         const type = h.getUint32(p), len = h.getUint32(p + 4);
+        if (len < 8 || p + len > r0.length) break;
         const val = dec.decode(r0.subarray(p + 8, p + len));
         if (type === 100 && !author) author = val;
         if (type === 503) title = val;

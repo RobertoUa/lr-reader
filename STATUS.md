@@ -69,7 +69,14 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
 - Words screen (library > Words): all saved words (Language Reactor list + words marked here) by Learning/Known, search, context sentence, change status, remove; Review is inside it.
 - Library: daily reading goal (Settings, default 15 min) with streak; Mark as finished (reader menu) moves a book under Finished.
-- Study tools (reader menu): word list per book, read aloud (device voice, auto page turn), stats (time,
+- Word and phrase popups: Explain word/phrase, sentence, paragraph (in the reader's language or simple
+  book language), Examples (Tatoeba) with Save, Search in book, Bookmark here, lookup count; phrases are
+  editable and extend by tapping words. Summaries also cover "Chapter so far". Library shows each
+  book's level (AI CEFR with a key, word frequency otherwise).
+- iOS app: Capacitor wrapper (`ios/`, personal team, free provisioning so it expires after 7 days;
+  reinstall with `IPHONE=<udid> npm run ios`). Device voices go through the native plugin, so downloaded
+  Premium voices work there.
+- Study tools (reader menu): word list per book, read aloud (chosen voice, auto page turn), stats (time,
   pages, words marked per day; unknown-word density per page and chapter), review with spaced
   repetition (Leitner 1/3/7/14/30 days; Known also marks KNOWN on Language Reactor).
 - Word sheet: frequency rank (bundled FrequencyWords es top 50k, CC BY-SA 4.0, credited in Settings) and

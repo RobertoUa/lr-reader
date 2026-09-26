@@ -5,6 +5,7 @@ export type WordEntry = {
   lemma: string;
   form: string;
   stage: "LEARNING" | "KNOWN";
+  sl?: string;
   bookId: string;
   bookTitle: string;
   ch: number;

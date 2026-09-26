@@ -1,6 +1,6 @@
 # LR Reader
 
-Offline EPUB/PDF reader for iPhone (PWA) with Language Reactor integration. See `PROMPT.md` for the spec.
+Offline EPUB/PDF/MOBI/FB2/TXT reader for iPhone (PWA, or the iOS app in `ios/`) with Language Reactor integration. See `PROMPT.md` for the spec.
 
     npm install
     npm run dev      # local dev server
@@ -73,8 +73,9 @@ Speech:
 1. Tap a word: it is spoken at once (Settings > "Say the word when I tap it" turns this off).
 2. Sheet: Play (word or selected phrase), Play sentence. Language Reactor speaks only up to 30
    characters, so longer text always uses a device voice.
-3. Settings > Voice: Language Reactor, or any Spanish iOS voice (works offline; download Enhanced or
-   Premium voices in iOS Settings > Accessibility > Spoken Content > Voices). Speed 0.6x-1.2x.
+3. Settings > Voice: Language Reactor, an OpenAI voice (needs the OpenAI key; clips are cached), or a
+   device voice (offline). Downloaded Enhanced/Premium iOS voices appear only in the iOS app, not the
+   web app. Speed 0.6x-1.2x.
    Test voice plays a sample.
 
 Examples, search, page numbers:
@@ -119,13 +120,13 @@ Study tools (reader > menu button):
 
 1. Words in this book: every word marked Learning/Known here, with form -> dictionary form, glosses and
    stage; tap one to go to its sentence.
-2. Read aloud: reads from the current sentence to the end of the chapter with the device voice,
+2. Read aloud: reads from the current sentence to the end of the chapter with the chosen voice (OpenAI fetches one sentence ahead),
    highlights the sentence, turns pages; "Stop reading" stops. Changing chapter or leaving stops it.
 3. Stats: reading time, pages and words marked for the last 7 days; unknown-word density (not in your
    Known or Learning list) for this page and chapter.
-4. Review (also Library > Review (N)): cards for Learning words due (1, 3, 7, 14, 30 days); Show answer,
+4. Library > Words: Learning/Known lists with search, the sentence each word was marked in (tap to open it), Mark Known / Move to Learning, Remove. Review (N) is in its top bar: cards for Learning words due (1, 3, 7, 14, 30 days); Show answer,
    Again / Good / Known (Known also marks the word KNOWN on Language Reactor).
-5. Settings > Export backup (share sheet on iPhone, download elsewhere), Import backup: books,
+5. Settings > Save backup (share sheet on iPhone: Save to Files > iCloud Drive, fixed name lr-reader-backup.json replaces the old one; download elsewhere; the library shows "No backup this week" after 7 days), Import backup: books,
    positions, bookmarks, word lists, summaries, stats, settings, pending marks; keys only if ticked.
 
 Word sheet extras:

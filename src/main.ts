@@ -265,6 +265,8 @@ function deviceVoice() {
 
 // Must be called synchronously from a tap.
 function speak(text: string, onError: (m: string) => void, voice: Tts.Voice | string | null = aiVoiceOf(settings().voice) || systemVoice(), rate = Number(settings().speechRate) || 1) {
+  // Read aloud shares the speech queue and the player; a word played now ends it.
+  stopReading();
   if (typeof voice === "string") {
     player.src = SILENCE;
     player.play().catch(() => {});
@@ -399,19 +401,21 @@ async function showLibrary() {
 const levelRuns = new Map<string, Promise<Freq.Level | undefined>>();
 function levelOf(m: Meta) {
   const cfg = aiForExtras();
-  if (m.level?.cefr || (m.level && !cfg)) return Promise.resolve(m.level);
+  const aiWait = !cfg || !navigator.onLine || Date.now() - (m.level?.tried || 0) < 864e5;
+  if (m.level?.cefr || (m.level && aiWait) || (!cfg && !Freq.supported(settings().sl))) return Promise.resolve(m.level);
   if (!levelRuns.has(m.id)) levelRuns.set(m.id, rateBook(m, cfg).finally(() => levelRuns.delete(m.id)));
   return levelRuns.get(m.id)!;
 }
 async function rateBook(m: Meta, cfg: ReturnType<typeof aiForExtras>) {
   const b = await getBook(m.id);
   if (!b) return m.level;
-  const sents = b.chapters.flatMap((c) => c.blocks.flatMap((x) => x.sentences)).filter((t) => !Freq.isEnglish(t));
-  let level = m.level || (Freq.supported(settings().sl) ? await Freq.difficulty(sents) : undefined);
-  if (cfg) {
+  const sl = settings().sl;
+  const sents = b.chapters.flatMap((c) => c.blocks.flatMap((x) => x.sentences)).filter((t) => sl === "en" || !Freq.isEnglish(t));
+  let level = m.level || (Freq.supported(sl) ? await Freq.difficulty(sents) : undefined);
+  if (cfg && navigator.onLine) {
     // Six runs of consecutive sentences from 10% to 90% of the book, past the front and back matter.
     const sample = [0, 1, 2, 3, 4, 5].map((k) => sents.slice(Math.floor(sents.length * (0.1 + 0.16 * k))).slice(0, 8).join(" ").slice(0, 500)).join("\n\n");
-    level = { ...level, ...(await bookLevel(sample, lang(), cfg).catch(() => ({}))) };
+    level = { ...level, tried: Date.now(), ...(await bookLevel(sample, lang(), cfg).catch(() => ({}))) };
   }
   const fresh = await getMeta(m.id);
   if (fresh && level) await putMeta({ ...fresh, level });
@@ -610,7 +614,7 @@ function mark() {
 async function openBook(id: string) {
   clearReturn();
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
-  if (!b || !m) return say("Book not found in storage.", true);
+  if (!b || !m) return say("Book not found in storage.", true), false;
   book = b;
   meta = m;
   offsets = [];
@@ -1436,7 +1440,7 @@ async function logWord(si: number, lemma: string, form: string, offset: number, 
   if (!stage) delete log[lemma];
   else {
     const now = Date.now();
-    log[lemma] = { box: 0, due: now, at: now, ...(log[lemma] as Study.WordEntry | undefined), lemma, form, stage, bookId: meta.id, bookTitle: meta.title, ch, si, offset, ...where0(si), tr: trs[si]?.tr || "", glosses: currentGlosses };
+    log[lemma] = { box: 0, due: now, at: now, ...(log[lemma] as Study.WordEntry | undefined), lemma, form, stage, sl: settings().sl, bookId: meta.id, bookTitle: meta.title, ch, si, offset, ...where0(si), tr: trs[si]?.tr || "", glosses: currentGlosses };
     bumpStat({ marked: 1 });
   }
   await cacheSet(logKey(meta.id), log);
@@ -1559,10 +1563,10 @@ function readAloud() {
     player.play().catch(() => {});
     return void readAloudAi(ai, anchor(), ++readingRun);
   }
-  const v = voice!;
+  const v = voice!, run = readingRun;
   // Queued at once from the tap: iOS only lets speech start from a user action.
   for (let i = anchor(); i < sents.length; i++) {
-    Tts.say(sents[i], v, Number(settings().speechRate) || 1, { onstart: () => showReading(i), onend: i === sents.length - 1 ? stopReading : undefined });
+    Tts.say(sents[i], v, Number(settings().speechRate) || 1, { onstart: () => showReading(i), onend: i === sents.length - 1 ? () => run === readingRun && stopReading() : undefined });
   }
 }
 // One sentence ahead is fetched while the current one plays.
@@ -1645,14 +1649,17 @@ $("open-review").addEventListener("click", () => openReview());
 const wordsEl = $("words"), wordsList = $("words-list");
 let wordsFilter: lr.Stage = "LEARNING";
 let wordRows: { lemma: string; stage: lr.Stage; e?: Study.WordEntry }[] = [];
-async function openWords() {
+// Shows the cached list at once, then again when Language Reactor's current list arrives.
+function openWords() {
   closeSheet();
   wordsEl.hidden = false;
   wordsList.innerHTML = `<div class="sub">...</div>`;
-  await loadWords();
+  buildWords().then(loadWords).then(() => void (wordsEl.hidden || buildWords()));
+}
+async function buildWords() {
   const sl = settings().sl;
   const local = new Map<string, Study.WordEntry>();
-  for (const e of await allWords()) if (!local.has(e.lemma) || local.get(e.lemma)!.at < e.at) local.set(e.lemma, e);
+  for (const e of await allWords()) if ((!e.sl || e.sl === sl) && (!local.has(e.lemma) || local.get(e.lemma)!.at < e.at)) local.set(e.lemma, e);
   const lemmas = new Set([...Object.keys(synced), ...local.keys(), ...outbox.filter((x) => x.key.startsWith("WORD|") && x.key.endsWith(`|${sl}`)).map((x) => lemmaOf(x.key))]);
   wordRows = [...lemmas].flatMap((lemma) => {
     const stage = stageOf(lemma, lemma, sl);
@@ -1688,9 +1695,9 @@ wordsEl.addEventListener("click", async (ev) => {
   const r = wordRows[Number(t.dataset.wgo ?? t.dataset.wset ?? t.dataset.wdel)];
   if (!r) return;
   if (t.dataset.wgo && r.e) {
+    if (!(await getMeta(r.e.bookId))) return void (t.textContent = "Book deleted");
     wordsEl.hidden = true;
-    await openBook(r.e.bookId);
-    return jumpTo(r.e.ch, r.e.si);
+    if ((await openBook(r.e.bookId)) !== false) jumpTo(r.e.ch, r.e.si);
   }
   const next = t.dataset.wdel ? undefined : r.stage === "KNOWN" ? "LEARNING" : "KNOWN";
   setLemmaStage(r.lemma, next, r.e);
@@ -1715,10 +1722,14 @@ async function setLemmaStage(lemma: string, next: lr.Stage | undefined, e?: Stud
   cacheSet("outbox", outbox);
   renderSync();
   flushOutbox();
-  if (!e) return;
-  if (next) return saveEntry({ ...e, stage: next });
-  const log = await cacheGet<Record<string, Study.WordEntry>>(logKey(e.bookId));
-  if (log) delete log[lemma], await cacheSet(logKey(e.bookId), log);
+  // Every book's copy of the word follows, so Review sees one status.
+  for (const [k, log] of await getCacheByPrefix<Record<string, Study.WordEntry>>("wl|")) {
+    const x = log?.[lemma];
+    if (!x || (x.sl && x.sl !== sl)) continue;
+    if (next) log[lemma] = { ...x, ...(x.bookId === e?.bookId ? e : {}), stage: next };
+    else delete log[lemma];
+    await cacheSet(k, log);
+  }
 }
 $("review-close").addEventListener("click", () => {
   reviewEl.hidden = true;
@@ -1732,6 +1743,7 @@ const BACKUP_EVERY = 7 * 864e5;
 let backupFile: File | null = null;
 let leftOut = "";
 $("backup-export").addEventListener("click", () => exportBackup($("backup-status")));
+$("backup-secrets").addEventListener("change", () => (backupFile = null));
 $("backup-nudge").addEventListener("click", () => exportBackup($("backup-nudge")));
 async function exportBackup(status: HTMLElement) {
   try {

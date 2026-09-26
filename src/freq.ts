@@ -21,7 +21,7 @@ export async function popularity(form: string, lemma: string): Promise<string> {
   return `#${r.toLocaleString("en")} \u00b7 ${band}`;
 }
 
-export type Level = { label?: string; common?: number; cefr?: string; why?: string };
+export type Level = { label?: string; common?: number; cefr?: string; why?: string; tried?: number };
 
 // Learner editions mix in English glossaries and translations; those sentences are left out.
 const EN = new Set("the and of to is you that it in for with was this are have what he she they his her be at on not but from or an which my your were had would will there their".split(" "));

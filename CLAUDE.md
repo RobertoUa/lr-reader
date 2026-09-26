@@ -1,6 +1,6 @@
 # LR Reader
 
-Offline EPUB/PDF reader for iPhone (PWA on the Home Screen) with Language Reactor integration. Static
+Offline EPUB/PDF/MOBI/FB2/TXT reader for iPhone (PWA on the Home Screen, plus a Capacitor iOS app) with Language Reactor integration. Static
 site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. Manual test checklist:
 `README.md`. Live: https://robertoua.github.io/lr-reader/ (every push to `main` deploys via
 `.github/workflows/pages.yml`).
@@ -18,7 +18,7 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 
 - Capacitor wrapper in `ios/` (same web build). Personal team H2TMZ7F29K, bundle `com.robertoua.lrreader`;
   free provisioning, so the install expires after 7 days: reinstall with
-  `IPHONE=00008140-001C3C261453001C npm run ios` (phone connected, unlocked, Developer Mode on).
+  `IPHONE=<device UDID> npm run ios` (UDID from `xcrun devicectl list devices`) (phone connected, unlocked, Developer Mode on).
 - `tts.ts`: in the app, device voices go through the native speech plugin (the WebView hides downloaded
   Premium voices). The web build still updates via GitHub Pages; the app only on reinstall.
 
@@ -28,7 +28,8 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
   summaries, study tools, backup, service worker registration). Large; sections are marked `// ---- X ----`.
 - `lr.ts`: every Language Reactor call (unofficial API) plus item builders and MD5. Keep LR calls here only.
 - `source.ts`: where translations/dictionary data come from (LR or AI); cache keys per source.
-- `aitr.ts`: ChatGPT/Claude sentence translation + per-word lemma/POS/glosses, dictionary, synonyms.
+- `aitr.ts`: ChatGPT/Claude sentence translation + per-word lemma/POS/glosses, dictionary, synonyms,
+  explanations (word/phrase/sentence/paragraph), book CEFR level, OpenAI speech.
 - `ai.ts` (Claude SDK summaries), `summary.ts` (prompt, OpenAI summaries, key-free chat links).
 - `epub.ts`, `pdf.ts` (pdf.js, lazy), `formats.ts` (TXT, FB2, MOBI with PalmDOC; chapters from heading lines), `split.ts` (Intl.Segmenter sentences).
 - `db.ts`: IndexedDB via idb-keyval: `lr-meta` (book metadata), `lr-text` (books), `lr-cache` (everything
@@ -37,7 +38,7 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - `outbox.ts`: queued marks; `afterFlush` merges by entry id. `prepare.ts`: offline preparation (paced pool).
 - `study.ts`: review scheduling, stats days, unknown-word density. `look.ts`: themes/fonts.
 - `mt.ts` + `mt.worker.ts`: offline es->en model (transformers.js) in a Web Worker; onnxruntime served
-  from the app, never from a CDN. `freq.ts` + `public/freq-es.txt`: word frequency (CC BY-SA, credited).
+  from the app, never from a CDN. `freq.ts` + `public/freq-es.txt`: word frequency and a rough book difficulty (CC BY-SA, credited).
 - `tatoeba.ts`: example sentences (Tatoeba API, CC BY 2.0 FR, credited under the list).
 - `bookmarklet.js`: run on languagereactor.com to fetch the user's diocoToken; copied from Settings.
 
