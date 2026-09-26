@@ -73,7 +73,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   book language), Examples (Tatoeba) with Save, Search in book, Bookmark here, lookup count; phrases are
   editable and extend by tapping words. Summaries also cover "Chapter so far". Library shows each
   book's level (AI CEFR with a key, word frequency otherwise).
-- iOS app: Capacitor wrapper (`ios/`, personal team, free provisioning so it expires after 7 days;
+- iOS app (ON HOLD, the installed app would not pass iOS "Verify App"; not maintained): Capacitor wrapper (`ios/`, personal team, free provisioning so it expires after 7 days;
   reinstall with `IPHONE=<udid> npm run ios`). Device voices go through the native plugin, so downloaded
   Premium voices work there.
 - Study tools (reader menu): word list per book, read aloud (chosen voice, auto page turn), stats (time,

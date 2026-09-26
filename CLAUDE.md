@@ -14,7 +14,10 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - Commit and push to `main` directly; the owner allowed it for this project. Watch the deploy with
   `gh run watch <id> -R RobertoUa/lr-reader --exit-status`.
 
-## iOS app
+## iOS app (on hold)
+
+- ON HOLD: the owner could not get the installed app past iOS "Verify App". Do not change, test or
+  review `ios/` or `src/tts.ts` native paths unless asked; work on the web app only.
 
 - Capacitor wrapper in `ios/` (same web build). Personal team H2TMZ7F29K, bundle `com.robertoua.lrreader`;
   free provisioning, so the install expires after 7 days: reinstall with
