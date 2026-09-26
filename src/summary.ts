@@ -6,7 +6,7 @@ export const OPENAI_MODELS: Record<string, string> = { "gpt-5.5": "GPT-5.5", "gp
 export type Scope = "page" | "sofar" | "chapter";
 export type Ask = { text: string; scope: Scope; title: string; sl: string; tl: string; outLang: string };
 
-const langName = (code: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(code) || code;
+export const langName = (code: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(code) || code;
 
 export function prompt(a: Ask): { system: string; user: string } {
   return {

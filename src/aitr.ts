@@ -20,7 +20,7 @@ const TRANSLATION_SCHEMA = obj({
 });
 const DICT_SCHEMA = obj({ entries: { type: "array", items: obj({ word: { type: "string" }, posGroups: { type: "array", items: obj({ pos: { type: "string" }, translations: { type: "array", items: { type: "string" } } }) } }) } });
 
-const langName = (code: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(code) || code;
+import { langName } from "./summary";
 
 async function ask<T>(cfg: AiCfg, system: string, user: string, schema: object): Promise<T> {
   if (!cfg.key) throw new Error(`Translations are set to ${cfg.provider === "openai" ? "ChatGPT" : "Claude"}: add its API key in Settings`);

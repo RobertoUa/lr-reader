@@ -36,7 +36,6 @@ export async function difficulty(sentences: string[]): Promise<Level> {
   const m = await load();
   let words = 0, common = 0;
   for (const s of sentences) {
-    if (isEnglish(s)) continue;
     for (const w of s.match(/\p{L}+/gu) || []) {
       const lw = w.toLowerCase(), r = m.get(lw);
       if (r === undefined && w[0] !== lw[0]) continue;

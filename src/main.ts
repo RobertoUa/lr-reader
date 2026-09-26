@@ -200,7 +200,7 @@ $("open-settings").addEventListener("click", async () => {
   fillVoices();
   mtStatus();
   const est = await navigator.storage?.estimate?.();
-  const persisted = (await navigator.storage?.persisted?.()) || (await navigator.storage?.persist?.().catch(() => false));
+  const persisted = await navigator.storage?.persisted?.();
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
   renderSync();
   settingsDlg.showModal();
@@ -963,7 +963,7 @@ document.addEventListener("click", (e) => {
 function subject() {
   const w = current || selected[0];
   const text = current ? current.textContent! : phrase?.text;
-  return w && text ? { w, text } : null;
+  return w && text ? { w, text, lemma: current ? lemmaFor(current).lemma : text.toLowerCase() } : null;
 }
 
 // Explanations come in the reader's language, or in simple book language; the choice is remembered.
@@ -977,7 +977,7 @@ async function explainCurrent(what: "word" | "sentence" | "paragraph") {
   const s = w.parentElement as HTMLElement, word = sub.text;
   const text = what === "paragraph" ? [...s.parentElement!.querySelectorAll<HTMLElement>(".s")].map((x) => sents[Number(x.dataset.s)]).join(" ") : sents[Number(s.dataset.s)];
   const { sl, tl } = lang();
-  const inSl = pref("explainIn") === "sl", name = (c: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c;
+  const inSl = pref("explainIn") === "sl", name = Sum.langName;
   box.innerHTML = `<div class="sub">...</div>`;
   try {
     const out = await cached(`expl|${what === "word" ? "word2" : what}|${sl}|${inSl ? `${sl}-simple` : tl}|${what === "word" ? word.toLowerCase() : ""}|${text}`, () => explain(what, word, text, lang(), cfg, inSl));
@@ -997,7 +997,7 @@ async function examples() {
   const box = $("examples");
   const { sl, tl } = lang();
   if (!Tatoeba.supported(sl)) return void (box.innerHTML = `<div class="sub">No example sentences for this language.</div>`);
-  const form = sub.text.toLowerCase(), lemma = current ? lemmaFor(w).lemma : form;
+  const form = sub.text.toLowerCase(), lemma = sub.lemma;
   box.innerHTML = `<div class="sub">...</div>`;
   try {
     const found = await cached(`ex|${sl}|${tl}|${form}|${lemma}`, () => Tatoeba.examples(form, lemma, sl, tl));
@@ -1023,7 +1023,7 @@ async function inBook() {
   if (!sub) return;
   const w = sub.w;
   const box = $("examples");
-  const words = [...new Set([sub.text.toLowerCase(), current ? lemmaFor(w).lemma : sub.text.toLowerCase()])];
+  const words = [...new Set([sub.text.toLowerCase(), sub.lemma])];
   const re = wordRe(words);
   const here = offsets[ch] + Number((w.parentElement as HTMLElement).dataset.s);
   const seen = new Set([sents[Number((w.parentElement as HTMLElement).dataset.s)]]);
@@ -1135,7 +1135,7 @@ $("summary").addEventListener("click", () => {
   closeSheet();
   if (!open) return;
   const { sl, tl } = settings();
-  const name = (c: string) => new Intl.DisplayNames(["en"], { type: "language" }).of(c) || c;
+  const name = Sum.langName;
   sumLang.innerHTML = `<option value="${tl}">In ${esc(name(tl))}</option><option value="${sl}">In easy ${esc(name(sl))}</option>`;
   sumLang.value = pref("sumLang") || tl;
   showSaved();
@@ -1374,24 +1374,21 @@ async function openPhrase(edited?: string) {
 
 // Saved like a selected phrase; the draft is completed with a translation when the outbox syncs.
 function saveExample(b: HTMLElement) {
-  const x = shownExamples[Number(b.dataset.saveEx)], w = current;
+  const x = shownExamples[Number(b.dataset.saveEx)], w = subject()?.w;
   if (!x || !w) return;
-  const { sl, email } = settings();
   const draft: Draft = { draft: true, itemType: "PHRASE", learningStage: "LEARNING", phrase: x.text, text: x.text, prev: null, next: null, ref: where0(Number((w.parentElement as HTMLElement).dataset.s)).ref };
-  outbox = enqueue(outbox, "save", lr.phraseKey(x.text, sl), email, draft);
-  cacheSet("outbox", outbox);
-  b.classList.add("on");
-  b.textContent = "Saved";
-  renderSync();
-  flushOutbox();
+  queuePhrase(x.text, draft, b);
 }
 
 function savePhrase(b: HTMLElement) {
   if (!phrase) return;
   const tr = trs[phrase.si];
   const draft: Draft = { draft: true, itemType: "PHRASE", learningStage: "LEARNING", phrase: phrase.text, ...where0(phrase.si) };
-  const item = tr && phrase.nlp.length ? lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft;
-  outbox = enqueue(outbox, "save", lr.phraseKey(phrase.text, settings().sl), settings().email, item);
+  queuePhrase(phrase.text, tr && phrase.nlp.length ? lr.phraseItem(phrase.text, phrase.tr, phrase.nlp, { ...draft, tr: tr.tr, nlp: tr.nlp }, lang()) : draft, b);
+}
+
+function queuePhrase(text: string, item: object, b: HTMLElement) {
+  outbox = enqueue(outbox, "save", lr.phraseKey(text, settings().sl), settings().email, item);
   cacheSet("outbox", outbox);
   b.classList.add("on");
   b.textContent = "Saved";
@@ -1629,12 +1626,7 @@ card.addEventListener("click", async (ev) => {
   queue.shift();
   if (r === "known") {
     // Marked KNOWN on Language Reactor too, completed at sync time like an offline mark.
-    const { sl, email } = settings();
-    const draft: Draft = { draft: true, itemType: "WORD", learningStage: "KNOWN", offset: e.offset, text: e.text, prev: e.prev, next: e.next, ref: e.ref };
-    outbox = enqueue(outbox, "save", lr.wordKey(e.lemma, sl), email, draft);
-    cacheSet("outbox", outbox);
-    flushOutbox();
-    await saveEntry({ ...e, stage: "KNOWN" });
+    await setLemmaStage(e.lemma, "KNOWN", e);
   } else {
     const g = Study.grade(e, r === "good");
     await saveEntry(g);
@@ -1667,7 +1659,6 @@ async function openWords() {
     return stage ? [{ lemma, stage, e: local.get(lemma) }] : [];
   });
   wordRows.sort((a, b) => (b.e?.at || 0) - (a.e?.at || 0) || a.lemma.localeCompare(b.lemma));
-  wordsEl.hidden = false;
   renderWords();
 }
 function renderWords() {
@@ -1713,7 +1704,7 @@ $("words-close").addEventListener("click", () => ((wordsEl.hidden = true), showL
 
 // Status change outside the reader. A new status needs the word's sentence as context, so words only on
 // Language Reactor (no sentence here) can be removed but not moved.
-function setLemmaStage(lemma: string, next: lr.Stage | undefined, e?: Study.WordEntry) {
+async function setLemmaStage(lemma: string, next: lr.Stage | undefined, e?: Study.WordEntry) {
   const { sl, email } = settings();
   const key = lr.wordKey(lemma, sl);
   if (!next) outbox = lemma in synced || sending.has(key) ? enqueue(outbox, "remove", key, email) : drop(outbox, key);
@@ -1725,8 +1716,9 @@ function setLemmaStage(lemma: string, next: lr.Stage | undefined, e?: Study.Word
   renderSync();
   flushOutbox();
   if (!e) return;
-  if (next) saveEntry({ ...e, stage: next });
-  else cacheGet<Record<string, Study.WordEntry>>(logKey(e.bookId)).then((log) => log && (delete log[lemma], cacheSet(logKey(e.bookId), log)));
+  if (next) return saveEntry({ ...e, stage: next });
+  const log = await cacheGet<Record<string, Study.WordEntry>>(logKey(e.bookId));
+  if (log) delete log[lemma], await cacheSet(logKey(e.bookId), log);
 }
 $("review-close").addEventListener("click", () => {
   reviewEl.hidden = true;
@@ -1929,9 +1921,6 @@ const busy = () => !!document.querySelector("dialog[open]") || !sheet.hidden || 
 const maybeUpdate = () => applyUpdate && (Date.now() - started < 5000 || (!lib.hidden && !busy()) || document.visibilityState === "hidden") && applyUpdate();
 // The new worker takes over by itself (skipWaiting); the page keeps running the old code until it
 // reloads here. A change of controller on a page that already had one is an update.
-// Books, translations and audio live in IndexedDB; ask the browser not to evict them under storage pressure.
-navigator.storage?.persist?.().catch(() => {});
-
 if ("serviceWorker" in navigator) {
   const hadWorker = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {

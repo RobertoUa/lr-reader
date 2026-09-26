@@ -67,7 +67,7 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #sheet .lemma { color: var(--muted); font-size: 15px; margin-top: 2px; }
 #sheet .tr { margin: 8px 0; font-size: 18px; }
 #sheet .sent { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
-#sheet .sent b { color: var(--fg); font-weight: 400; display: block; margin-top: 4px; }
+#sheet .sent b { color: var(--fg); font-weight: 400; }
 #sheet .pos { margin-top: 8px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
 #sheet .err { color: #d33; margin: 8px 0; }
 #sheet .explain .link { background: none; min-height: 0; padding: 6px 0 0; color: var(--accent); font-size: 14px; }

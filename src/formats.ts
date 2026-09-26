@@ -98,17 +98,17 @@ export function parseMobi(data: Uint8Array, name: string, lang = "es"): Book {
   const ascii = (b: Uint8Array) => String.fromCharCode(...b);
   const isMobi = r0.length > 20 && ascii(r0.subarray(16, 20)) === "MOBI";
   const headerLen = isMobi ? h.getUint32(20) : 0;
-  const utf8 = isMobi && h.getUint32(28) === 65001;
+  const dec = new TextDecoder(isMobi && h.getUint32(28) === 65001 ? "utf-8" : "windows-1252");
   const extraFlags = isMobi && headerLen >= 0xe4 ? h.getUint16(0xf2) : 0;
   let title = "", author = "";
   if (isMobi) {
     const nameOff = h.getUint32(84), nameLen = h.getUint32(88);
-    title = new TextDecoder(utf8 ? "utf-8" : "windows-1252").decode(r0.subarray(nameOff, nameOff + nameLen));
+    title = dec.decode(r0.subarray(nameOff, nameOff + nameLen));
     if (h.getUint32(128) & 0x40) {
       const e = 16 + headerLen;
       for (let i = 0, p = e + 12; i < h.getUint32(e + 8) && p + 8 <= r0.length; i++) {
         const type = h.getUint32(p), len = h.getUint32(p + 4);
-        const val = new TextDecoder(utf8 ? "utf-8" : "windows-1252").decode(r0.subarray(p + 8, p + len));
+        const val = dec.decode(r0.subarray(p + 8, p + len));
         if (type === 100 && !author) author = val;
         if (type === 503) title = val;
         p += len;
@@ -123,7 +123,7 @@ export function parseMobi(data: Uint8Array, name: string, lang = "es"): Book {
   }
   const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   parts.reduce((o, p) => (all.set(p, o), o + p.length), 0);
-  const html = new TextDecoder(utf8 ? "utf-8" : "windows-1252").decode(all);
+  const html = dec.decode(all);
   const pieces = html
     .split(/<mbp:pagebreak[^>]*>/i)
     .map((piece) => {
