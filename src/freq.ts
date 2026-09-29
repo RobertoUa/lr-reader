@@ -11,6 +11,10 @@ export const preload = () => load().then((m) => void (loadedMap = m));
 
 export const supported = (sl: string) => sl === "es";
 
+// Spanish number words, never worth underlining (Language Reactor lists rarely hold them).
+const NUMBER = /^(cero|uno?|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieci\p{L}+|veinte|veinti\p{L}+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|\p{L}*cient[oa]s|quinient[oa]s|mil|mill[o\u00f3]n|millones)$/u;
+export const numberWord = (w: string) => NUMBER.test(w);
+
 function load() {
   ranks ||= fetch("freq-es.txt")
     .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`frequency list: HTTP ${r.status}`))))

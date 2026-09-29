@@ -699,7 +699,7 @@ function mark() {
       const marked = stageOf(lemmas[k], form, sl) ?? (lemmas[k] !== form ? stageOf(form, form, sl) : undefined);
       const rank = Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity);
       const verb = pos?.[k] === "VERB" || pos?.[k] === "AUX";
-      const stage = marked ?? (rank <= h.autoKnown || (verb && familyKnown(lemmas[k])) ? "KNOWN" : undefined);
+      const stage = marked ?? (rank <= h.autoKnown || (verb && familyKnown(lemmas[k])) || (sl === "es" && Freq.numberWord(form)) ? "KNOWN" : undefined);
       w.classList.toggle("learning", stage === "LEARNING");
       w.classList.toggle("known", h.known && stage === "KNOWN");
       // Only once the sentence is translated (its dictionary forms decide what is known), and never names.
