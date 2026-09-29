@@ -1,7 +1,7 @@
 import "./style.css";
 import { parseEpub, type Book } from "./epub";
 import * as Formats from "./formats";
-import { type Bookmark, addBook, clearTranslations, getCacheByPrefix, putBook, setCacheMany, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
+import { type Bookmark, addBook, cacheDel, clearTranslations, getCacheByPrefix, putBook, setCacheMany, cached, hdKey, hdLemmaKey, cacheGet, cacheGetMany, cacheSet, deleteBook, getBook, getMeta, listBooks, putMeta, type Meta } from "./db";
 import * as lr from "./lr";
 import { afterFlush, drop, enqueue, flush, type Entry } from "./outbox";
 import * as Look from "./look";
@@ -12,6 +12,7 @@ import * as Study from "./study";
 import * as Freq from "./freq";
 import * as Tts from "./tts";
 import * as Tatoeba from "./tatoeba";
+import * as Sync from "./sync";
 import { SPEECH_VOICES, bookLevel, explain, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
@@ -363,6 +364,7 @@ $("test-voice").addEventListener("click", (e) => {
 
 async function showLibrary() {
   setTimeout(maybeUpdate);
+  setTimeout(syncNow);
   updateReviewCount();
   closeSheet();
   reader.hidden = true;
@@ -1662,7 +1664,8 @@ async function buildWords() {
   for (const e of await allWords()) if ((!e.sl || e.sl === sl) && (!local.has(e.lemma) || local.get(e.lemma)!.at < e.at)) local.set(e.lemma, e);
   const lemmas = new Set([...Object.keys(synced), ...local.keys(), ...outbox.filter((x) => x.key.startsWith("WORD|") && x.key.endsWith(`|${sl}`)).map((x) => lemmaOf(x.key))]);
   wordRows = [...lemmas].flatMap((lemma) => {
-    const stage = stageOf(lemma, lemma, sl);
+    // A mark from another device may not have reached Language Reactor yet; its synced log still counts.
+    const stage = stageOf(lemma, lemma, sl) ?? local.get(lemma)?.stage;
     return stage ? [{ lemma, stage, e: local.get(lemma) }] : [];
   });
   wordRows.sort((a, b) => (b.e?.at || 0) - (a.e?.at || 0) || a.lemma.localeCompare(b.lemma));
@@ -1735,6 +1738,107 @@ $("review-close").addEventListener("click", () => {
   reviewEl.hidden = true;
   if (!lib.hidden) showLibrary();
 });
+
+// ---- Sync (Cloudflare Worker in sync/) ----
+
+const SYNC_URL = "https://lr-reader-sync.robertoua.workers.dev";
+const SYNC_PREFIXES = ["wl|", "stats|", "looks|", "sum|", "sumlast|"];
+const syncConn = (): Sync.Conn | null => (pref("syncToken") ? { url: pref("syncUrl") || SYNC_URL, token: pref("syncToken")! } : null);
+($("sync-url") as HTMLInputElement).value = pref("syncUrl") || "";
+($("sync-token") as HTMLInputElement).value = pref("syncToken") || "";
+$("sync-url").addEventListener("change", (e) => pref("syncUrl", (e.target as HTMLInputElement).value.trim()));
+$("sync-token").addEventListener("change", (e) => (pref("syncToken", (e.target as HTMLInputElement).value.trim()), syncNow(true)));
+$("sync-now").addEventListener("click", () => syncNow(true));
+
+// Word logs are split per word so two devices marking words in the same book both keep theirs.
+async function localItems(): Promise<Sync.Items> {
+  const items: Sync.Items = {};
+  for (const { prepared: _p, preparedChapters: _c, ...m } of await listBooks()) items[`meta|${m.id}`] = m;
+  for (const [k, v] of await getCacheByPrefix<unknown>(SYNC_PREFIXES)) {
+    if (k.startsWith("wl|")) for (const [lemma, e] of Object.entries((v as object) || {})) items[`${k}|${lemma}`] = e;
+    else items[k] = v;
+  }
+  const s: Record<string, unknown> = { ...settings() };
+  for (const k of SECRET) delete s[k];
+  items.prefs = { settings: s, look: pref("look"), goal: pref("goal"), explainIn: pref("explainIn") };
+  return items;
+}
+
+// Writes what changed; returns keys of books whose text could not be fetched, to retry next time.
+async function applyItems(next: Sync.Items, local: Sync.Items, c: Sync.Conn): Promise<string[]> {
+  const same = (k: string) => JSON.stringify(next[k]) === JSON.stringify(local[k]);
+  const skipped: string[] = [], logs = new Set<string>();
+  const metas = new Map((await listBooks()).map((m) => [m.id, m]));
+  for (const k of new Set([...Object.keys(next), ...Object.keys(local)])) {
+    if (same(k)) continue;
+    const v = next[k];
+    if (k.startsWith("meta|")) {
+      const id = k.slice(5), have = metas.get(id);
+      if (v === undefined) await deleteBook(id, lang());
+      else if (have) await putMeta({ ...(v as Meta), prepared: have.prepared, preparedChapters: have.preparedChapters });
+      else {
+        const b = await Sync.getBook(c, id);
+        if (b) await putBook({ ...(v as Meta), prepared: 0, preparedChapters: [] }, b), markUploaded(id);
+        else skipped.push(k);
+      }
+    } else if (k.startsWith("wl|")) logs.add(k.split("|").slice(0, 2).join("|"));
+    else if (k === "prefs") {
+      const p = v as { settings: Settings; look: string | null; goal: string | null; explainIn: string | null };
+      pref("settings", JSON.stringify({ ...p.settings, ...Object.fromEntries(SECRET.map((x) => [x, (settings() as Record<string, unknown>)[x]])) }));
+      for (const x of ["look", "goal", "explainIn"] as const) if (p[x]) pref(x, p[x]!);
+      look = Look.load();
+      Look.apply(look);
+      ($("goal") as HTMLSelectElement).value = String(goalMin());
+    } else if (v === undefined) await cacheDel(k);
+    else await cacheSet(k, v);
+  }
+  for (const lk of logs) {
+    const log: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(next)) if (k.startsWith(lk + "|")) log[k.slice(lk.length + 1)] = v;
+    await cacheSet(lk, log);
+  }
+  return skipped;
+}
+
+const uploaded = () => new Set<string>(JSON.parse(pref("syncBooks") || "[]"));
+const markUploaded = (id: string) => pref("syncBooks", JSON.stringify([...uploaded(), id]));
+let syncing: Promise<void> | null = null, lastSync = 0;
+function syncNow(force = false) {
+  if (!syncConn() || !navigator.onLine || syncing || (!force && Date.now() - lastSync < 5 * 60000)) return;
+  lastSync = Date.now();
+  syncing = runSync().finally(() => (syncing = null));
+}
+async function runSync() {
+  const c = syncConn()!, status = $("sync-state");
+  status.textContent = "Syncing...";
+  try {
+    const up = uploaded();
+    for (const m of await listBooks()) {
+      if (up.has(m.id)) continue;
+      const b = await getBook(m.id);
+      if (b) await Sync.putBook(c, m.id, b), markUploaded(m.id);
+    }
+    const base = (await cacheGet<Sync.Items>("sync|base")) || {};
+    let remote = await Sync.getState(c);
+    for (let tries = 0; tries < 3; tries++) {
+      const local = await localItems();
+      const next = Sync.merge3(base, local, remote.items || {});
+      const skipped = await applyItems(next, local, c);
+      const r = await Sync.putState(c, remote.v, next);
+      if ("v" in r) {
+        for (const k of skipped) delete next[k];
+        await cacheSet("sync|base", next);
+        status.textContent = `Synced ${new Date().toLocaleTimeString()}.`;
+        if (!lib.hidden) showLibrary();
+        return;
+      }
+      remote = r.conflict;
+    }
+    throw new Error("another device kept syncing at the same time; try again");
+  } catch (e) {
+    status.textContent = `Sync failed: ${msg(e)}`;
+  }
+}
 
 // ---- Backup ----
 
@@ -1943,6 +2047,7 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js");
 }
 document.addEventListener("visibilitychange", maybeUpdate);
+document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && syncNow(true));
 navigator.storage?.persist?.();
 showLibrary();
 loadWords();

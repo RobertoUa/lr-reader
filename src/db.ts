@@ -55,6 +55,7 @@ const cache = createStore("lr-cache", "kv");
 export const cacheGet = <T>(k: string) => get<T>(k, cache);
 export const cacheGetMany = <T>(ks: string[]) => getMany<T>(ks, cache);
 export const cacheSet = (k: string, v: unknown) => set(k, v, cache);
+export const cacheDel = (k: string) => del(k, cache);
 
 export async function cached<T>(k: string, fetcher: () => Promise<T>): Promise<T> {
   const hit = await cacheGet<T>(k);
@@ -81,8 +82,9 @@ export async function clearTranslations(): Promise<number> {
 }
 
 // Words marked per book (wl|<bookId>), reading stats per day (stats|<date>): kept by Clear translation cache.
-export const getCacheByPrefix = async <T>(prefix: string): Promise<[string, T][]> => {
-  const ks = (await keys<string>(cache)).map(String).filter((k) => k.startsWith(prefix));
+export const getCacheByPrefix = async <T>(prefix: string | string[]): Promise<[string, T][]> => {
+  const ps = [prefix].flat();
+  const ks = (await keys<string>(cache)).map(String).filter((k) => ps.some((p) => k.startsWith(p)));
   const vs = await getMany<T>(ks, cache);
   return ks.map((k, i) => [k, vs[i] as T]);
 };

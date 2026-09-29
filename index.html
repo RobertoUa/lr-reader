@@ -120,6 +120,10 @@
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Save backup</button>
       <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
     <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
+    <label>Sync server<input id="sync-url" type="url" placeholder="https://lr-reader-sync.robertoua.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>Sync token<input id="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="row" style="justify-content:flex-start"><button type="button" id="sync-now">Sync now</button></div>
+    <p id="sync-state" class="sub">Books, positions, bookmarks, words, stats, summaries and settings (not API keys) sync on start, when you leave the app and every few minutes in the library.</p>
     <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
     <label>Daily reading goal<select id="goal"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
     <label>Voice<select name="voice"></select></label>

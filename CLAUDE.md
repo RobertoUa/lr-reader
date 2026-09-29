@@ -45,6 +45,9 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - `mt.ts` + `mt.worker.ts`: offline es->en model (transformers.js) in a Web Worker; onnxruntime served
   from the app, never from a CDN. `freq.ts` + `public/freq-es.txt`: word frequency and a rough book difficulty (CC BY-SA, credited).
 - `tatoeba.ts`: example sentences (Tatoeba API, CC BY 2.0 FR, credited under the list).
+- `sync.ts` + `sync/worker.js`: sync with the owner's Cloudflare Worker (KV). Three-way merge of a flat
+  item map against the last synced copy (`sync|base`); books uploaded once. Deploy: `cd sync && npx wrangler deploy`;
+  local test: `npx wrangler dev --local` with `sync/.dev.vars` (TOKEN=...). Settings > Sync server/token.
 - `bookmarklet.js`: run on languagereactor.com to fetch the user's diocoToken; copied from Settings.
 
 ## Rules
