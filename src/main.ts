@@ -661,23 +661,25 @@ function sentenceLemmas(si: number, ws: HTMLElement[]): string[] {
 }
 
 // Learning is always shown; known and recommended (common unmarked words) only when switched on.
-const hl = () => ({ known: pref("hlKnown") === "1", rec: pref("hlRec") === "1", recMax: Number(pref("recMax")) || 3000 });
+const hl = () => ({ known: pref("hlKnown") === "1", rec: pref("hlRec") === "1", recMax: Number(pref("recMax")) || 3000, autoKnown: Number(pref("autoKnown") ?? 1000) });
 function mark() {
   if (reader.hidden) return;
   const sl = settings().sl, h = hl();
   const rec = h.rec && Freq.supported(sl);
-  if (rec && !Freq.ready()) Freq.preload().then(mark, () => {});
+  if ((rec || h.autoKnown) && Freq.supported(sl) && !Freq.ready()) Freq.preload().then(mark, () => {});
   spans.forEach((span, si) => {
     const ws = [...span.children] as HTMLElement[];
     const lemmas = sentenceLemmas(si, ws), tr = trs[si], pos = tr && posCache.get(tr);
     ws.forEach((w, k) => {
       const text = w.textContent!, form = text.toLowerCase();
-      const stage = stageOf(lemmas[k], form, sl) ?? (lemmas[k] !== form ? stageOf(form, form, sl) : undefined);
+      const marked = stageOf(lemmas[k], form, sl) ?? (lemmas[k] !== form ? stageOf(form, form, sl) : undefined);
+      const rank = Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity);
+      const stage = marked ?? (rank <= h.autoKnown ? "KNOWN" : undefined);
       w.classList.toggle("learning", stage === "LEARNING");
       w.classList.toggle("known", h.known && stage === "KNOWN");
       // Only once the sentence is translated (its dictionary forms decide what is known), and never names.
       const name = pos?.[k] === "PROPN" || (k > 0 && text[0] !== form[0]);
-      const r = rec && !stage && tr && !name ? Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity) : Infinity;
+      const r = rec && !stage && tr && !name ? rank : Infinity;
       w.classList.toggle("rec", r <= h.recMax && form.length > 1 && !/\d/.test(form));
     });
   });
@@ -687,6 +689,8 @@ for (const [id, key] of [["hl-known", "hlKnown"], ["hl-rec", "hlRec"]] as const)
   $(id).addEventListener("change", (e) => (pref(key, (e.target as HTMLInputElement).checked ? "1" : "0"), mark()));
 }
 ($("rec-max") as HTMLSelectElement).value = String(hl().recMax);
+($("auto-known") as HTMLSelectElement).value = String(hl().autoKnown);
+$("auto-known").addEventListener("change", (e) => (pref("autoKnown", (e.target as HTMLSelectElement).value), mark()));
 $("rec-max").addEventListener("change", (e) => (pref("recMax", (e.target as HTMLSelectElement).value), mark()));
 
 async function openBook(id: string) {
