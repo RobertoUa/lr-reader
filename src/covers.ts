@@ -4,7 +4,7 @@ const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCas
 const COUNTRY: Record<string, string> = { es: "es", fr: "fr", de: "de", it: "it", pt: "pt", en: "us" };
 
 // "Un Planeta Rojo - Nivel Intermedio (B1-B2): ..." -> "un planeta rojo"
-const coreTitle = (t: string) => fold(t.replace(/\(.*?\)|\[.*?\]/g, " ").split(/[:\-–|]/)[0]).replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+const coreTitle = (t: string) => fold(t.replace(/\(.*?\)|\[.*?\]/g, " ").split(/[:\-\u2013|]/)[0]).replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
 // A hit counts only when its title starts with the book's first words, so an unrelated cover never shows.
 const matches = (found: string, title: string) => {
   const want = coreTitle(title).split(" ").slice(0, 3).join(" ");
