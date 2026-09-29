@@ -6,14 +6,27 @@ import type { Book } from "./epub";
 export type Items = Record<string, unknown>;
 export type Conn = { url: string; token: string };
 
+// Counters (reading stats per day, lookup counts) grow on every device, so both sides' increments add up.
+const COUNTERS = ["stats|", "looks|"];
+type Counter = number | Record<string, number>;
+function addUp(b: Counter | undefined, l: Counter, r: Counter, firstSync: boolean): Counter {
+  const f = (x: number | undefined, y: number | undefined, z: number | undefined) => (firstSync ? Math.max(y || 0, z || 0) : (y || 0) + (z || 0) - (x || 0));
+  if (typeof l === "number") return f(b as number | undefined, l, r as number);
+  const o = b as Record<string, number> | undefined, rr = r as Record<string, number>;
+  return Object.fromEntries([...new Set([...Object.keys(l), ...Object.keys(rr)])].map((k) => [k, f(o?.[k], l[k], rr[k])]));
+}
+
 // Per item: unchanged on one side takes the other side; changed on both keeps the local value (the remote
-// one when preferRemote, for a device's first sync), except that an edit beats a deletion.
+// one when preferRemote, for a device's first sync), except that an edit beats a deletion and counters add up.
 export function merge3(base: Items, local: Items, remote: Items, preferRemote = false): Items {
   const out: Items = {};
   const js = (x: unknown) => (x === undefined ? undefined : JSON.stringify(x));
   for (const k of new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)])) {
     const b = js(base[k]), l = js(local[k]), r = js(remote[k]);
-    const v = l === r || r === b ? local[k] : l === b ? remote[k] : preferRemote ? remote[k] ?? local[k] : local[k] ?? remote[k];
+    const both = local[k] !== undefined && remote[k] !== undefined && COUNTERS.some((p) => k.startsWith(p));
+    const v = l === r || r === b ? local[k] : l === b ? remote[k]
+      : both ? addUp(base[k] as Counter | undefined, local[k] as Counter, remote[k] as Counter, preferRemote)
+      : preferRemote ? remote[k] ?? local[k] : local[k] ?? remote[k];
     if (v !== undefined) out[k] = v;
   }
   return out;

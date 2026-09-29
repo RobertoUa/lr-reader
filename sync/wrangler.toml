@@ -5,3 +5,11 @@ compatibility_date = "2026-09-01"
 [[kv_namespaces]]
 binding = "KV"
 id = "4ed39c0499d548eeab62be5390f23b2b"
+
+[[durable_objects.bindings]]
+name = "STATE"
+class_name = "State"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["State"]

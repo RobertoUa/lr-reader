@@ -46,8 +46,9 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
   from the app, never from a CDN. `freq.ts` + `public/freq-es.txt`: word frequency and a rough book difficulty (CC BY-SA, credited).
 - `covers.ts`: book covers (EPUB/FB2 embedded, else Apple Books search, else Open Library), shrunk to a JPEG data URL in `cover|<id>` (synced).
 - `tatoeba.ts`: example sentences (Tatoeba API, CC BY 2.0 FR, credited under the list).
-- `sync.ts` + `sync/worker.js`: sync with the owner's Cloudflare Worker (KV). Three-way merge of a flat
-  item map against the last synced copy (`sync|base`); books uploaded once. Deploy: `cd sync && npx wrangler deploy`;
+- `sync.ts` + `sync/worker.js`: sync with the owner's Cloudflare Worker (state in a Durable Object,
+  books in KV). Three-way merge of a flat item map against the last synced copy (`sync|base`, dropped when
+  the server or token changes or the server version goes back); counters (`stats|`, `looks|`) add up. Deploy: `cd sync && npx wrangler deploy`;
   local test: `npx wrangler dev --local` with `sync/.dev.vars` (TOKEN=...). Settings > Sync server/token.
 - `bookmarklet.js`: run on languagereactor.com to fetch the user's diocoToken; copied from Settings.
 

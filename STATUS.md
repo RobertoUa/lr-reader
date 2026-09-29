@@ -67,7 +67,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   speak on tap.
 - Offline English fallback: opus-mt es-en in the browser (about 110 MB), runtime served from the app.
 - Token bookmarklet for iPhone Safari and "Paste Language Reactor login" in Settings.
-- Sync (Settings > Sync server/token): Cloudflare Worker `lr-reader-sync` on the owner's free account (KV only).
+- Sync (Settings > Sync server/token): Cloudflare Worker `lr-reader-sync` on the owner's free account (state in a SQLite Durable Object for a real version check, books and `state:prev` in KV).
   Books, positions, bookmarks, word logs, stats, lookup counts, summaries and non-secret settings; three-way
   merge, deletions included. Tested two devices against `wrangler dev --local`.
 - Words screen (library > Words): all saved words (Language Reactor list + words marked here) by Learning/Known, search, context sentence, change status, remove; Review is inside it.

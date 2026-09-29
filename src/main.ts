@@ -165,6 +165,8 @@ async function flushOutbox() {
     }
   });
   outbox = afterFlush(outbox, mine, left);
+  // A new object, so familyKnown() rebuilds its known-verb list.
+  synced = { ...synced };
   // Only marks made during this flush start another one; failures wait for the next trigger.
   const added = outbox.filter((e) => !startIds.has(e.id));
   sending.clear();
@@ -215,6 +217,7 @@ $("open-settings").addEventListener("click", async () => {
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
   renderSync();
   showTab(pref("settingsTab") || "account");
+  settingsDlg.returnValue = "";
   settingsDlg.showModal();
 });
 settingsDlg.addEventListener("close", () => {
@@ -523,6 +526,7 @@ async function askPrepare(id: string) {
     const [a, z] = [Number(prepFrom.value), Number(prepTo.value)].sort((x, y) => x - y);
     startPrepare(id, Array.from({ length: z - a + 1 }, (_, i) => a + i), ($("prep-sum") as HTMLInputElement).checked);
   };
+  prepDlg.returnValue = "";
   prepDlg.showModal();
 }
 
@@ -860,9 +864,9 @@ async function translatePage() {
   let len = 0;
   for (const i of want) {
     const cap = src.ai && batches.length <= 1 ? FIRST_CHARS : src.batchChars;
-    if (!batches.length || (len + sents[i].length + 1 > cap && batches[batches.length - 1].length)) batches.push([]), (len = 0);
+    if (!batches.length || (len + sents[i].length + 2 > cap && batches[batches.length - 1].length)) batches.push([]), (len = 0);
     batches[batches.length - 1].push(i);
-    len += sents[i].length + 1;
+    len += sents[i].length + 2;
   }
   const run = async (batch: number[]) => {
     const res = await translateBatch(batch.map((i) => sents[i]));
@@ -980,7 +984,7 @@ async function openWord(w: HTMLElement) {
     }
     if (current !== w) return;
   }
-  const stage = stageOf(lemma);
+  const stage = stageOf(lemma, form.toLowerCase());
   const btn = (s: string, label: string) => `<button data-stage="${s}" class="${stage === s ? "on" : ""}">${label}</button>`;
   sheet.innerHTML = CLOSE + `<h3>${esc(form)}</h3>
     ${lemma !== form.toLowerCase() || token?.pos ? `<div class="lemma">${lemma !== form.toLowerCase() ? esc(lemma) + " &middot; " : ""}${esc((token?.pos || "").toLowerCase())}</div>` : ""}
@@ -1811,6 +1815,7 @@ wordsEl.addEventListener("click", async (ev) => {
     if (!(await getMeta(r.e.bookId))) return void (t.textContent = "Book deleted");
     wordsEl.hidden = true;
     if ((await openBook(r.e.bookId)) !== false) jumpTo(r.e.ch, r.e.si);
+    return;
   }
   const next = t.dataset.wdel ? undefined : r.stage === "KNOWN" ? "LEARNING" : "KNOWN";
   setLemmaStage(r.lemma, next, r.e);
@@ -1856,8 +1861,15 @@ const SYNC_PREFIXES = ["wl|", "stats|", "looks|", "sum|", "sumlast|", "cover|"];
 const syncConn = (): Sync.Conn | null => (pref("syncToken") ? { url: pref("syncUrl") || SYNC_URL, token: pref("syncToken")! } : null);
 ($("sync-url") as HTMLInputElement).value = pref("syncUrl") || "";
 ($("sync-token") as HTMLInputElement).value = pref("syncToken") || "";
-$("sync-url").addEventListener("change", (e) => pref("syncUrl", (e.target as HTMLInputElement).value.trim()));
-$("sync-token").addEventListener("change", (e) => (pref("syncToken", (e.target as HTMLInputElement).value.trim()), syncNow(true)));
+// Another server (or account) has its own history, so the next sync starts over as a first sync.
+const syncTo = (k: string) => async (e: Event) => {
+  await syncing;
+  pref(k, (e.target as HTMLInputElement).value.trim());
+  await cacheDel("sync|base");
+  syncNow(true);
+};
+$("sync-url").addEventListener("change", syncTo("syncUrl"));
+$("sync-token").addEventListener("change", syncTo("syncToken"));
 $("sync-now").addEventListener("click", () => syncNow(true));
 
 // Word logs are split per word so two devices marking words in the same book both keep theirs.
@@ -1888,7 +1900,7 @@ async function applyItems(next: Sync.Items, local: Sync.Items, c: Sync.Conn): Pr
       else if (have) await putMeta({ ...(v as Meta), prepared: have.prepared, preparedChapters: have.preparedChapters });
       else {
         const b = await Sync.getBook(c, id);
-        if (b) await putBook({ ...(v as Meta), prepared: 0, preparedChapters: [] }, b), markUploaded(id);
+        if (b) await putBook({ ...(v as Meta), prepared: 0, preparedChapters: [] }, b);
         else skipped.push(k);
       }
     } else if (k.startsWith("wl|")) logs.add(k.split("|").slice(0, 2).join("|"));
@@ -1910,8 +1922,6 @@ async function applyItems(next: Sync.Items, local: Sync.Items, c: Sync.Conn): Pr
   return skipped;
 }
 
-const uploaded = () => new Set<string>(JSON.parse(pref("syncBooks") || "[]"));
-const markUploaded = (id: string) => pref("syncBooks", JSON.stringify([...uploaded(), id]));
 let syncing: Promise<void> | null = null, lastSync = 0;
 function syncNow(force = false) {
   if (!syncConn() || !navigator.onLine || syncing || (!force && Date.now() - lastSync < 5 * 60000)) return;
@@ -1922,14 +1932,15 @@ async function runSync() {
   const c = syncConn()!, status = $("sync-state");
   status.textContent = "Syncing...";
   try {
-    const up = uploaded();
+    const up = new Set(await Sync.listBooks(c));
     for (const m of await listBooks()) {
       if (up.has(m.id)) continue;
       const b = await getBook(m.id);
-      if (b) await Sync.putBook(c, m.id, b), markUploaded(m.id);
+      if (b) await Sync.putBook(c, m.id, b);
     }
-    const saved = await cacheGet<Sync.Items>("sync|base"), base = saved || {};
     let remote = await Sync.getState(c);
+    // A server older than our base was reset or restored: its missing items are not deletions.
+    const saved = remote.v >= Number(pref("syncV") || 0) ? await cacheGet<Sync.Items>("sync|base") : undefined, base = saved || {};
     for (let tries = 0; tries < 3; tries++) {
       const local = await localItems();
       const next = Sync.merge3(base, local, remote.items || {}, !saved);
@@ -1938,6 +1949,7 @@ async function runSync() {
       if ("v" in r) {
         for (const k of skipped) delete next[k];
         await cacheSet("sync|base", next);
+        pref("syncV", String(r.v));
         status.textContent = `Synced ${new Date().toLocaleTimeString()}.`;
         if (!lib.hidden) showLibrary();
         return;
