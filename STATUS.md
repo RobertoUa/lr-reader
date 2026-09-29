@@ -1,6 +1,6 @@
 # LR Reader: status
 
-Last updated: 2026-09-23. Live: https://robertoua.github.io/lr-reader/ (repo RobertoUa/lr-reader, every
+Last updated: 2026-09-29. Live: https://robertoua.github.io/lr-reader/ (repo RobertoUa/lr-reader, every
 push to `main` deploys). Spec: `PROMPT.md`. Manual test checklist: `README.md`.
 
 ## BLOCKER: Language Reactor refuses this app (found 2026-09-23 afternoon)
@@ -73,7 +73,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
   book language), Examples (Tatoeba) with Save, Search in book, Bookmark here, lookup count; phrases are
   editable and extend by tapping words. Summaries also cover "Chapter so far". Library shows each
   book's level (AI CEFR with a key, word frequency otherwise).
-- iOS app (ON HOLD, the installed app would not pass iOS "Verify App"; not maintained): Capacitor wrapper (`ios/`, personal team, free provisioning so it expires after 7 days;
+- iOS app (ON HOLD, the installed app would not pass iOS "Verify App"; not maintained; reinstalled over Wi-Fi 2026-09-28 with all web fixes, verification still unconfirmed): Capacitor wrapper (`ios/`, personal team, free provisioning so it expires after 7 days;
   reinstall with `IPHONE=<udid> npm run ios`). Device voices go through the native plugin, so downloaded
   Premium voices work there.
 - Study tools (reader menu): word list per book, read aloud (chosen voice, auto page turn), stats (time,

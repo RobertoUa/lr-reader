@@ -18,6 +18,8 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 
 - ON HOLD: the owner could not get the installed app past iOS "Verify App". Do not change, test or
   review `ios/` or `src/tts.ts` native paths unless asked; work on the web app only.
+- Reinstall only when asked. It works over Wi-Fi (phone paired, unlocked, same network; last done
+  2026-09-28); if the phone is not listed, pair by cable once and tick Xcode > Devices > "Connect via network".
 
 - Capacitor wrapper in `ios/` (same web build). Personal team H2TMZ7F29K, bundle `com.robertoua.lrreader`;
   free provisioning, so the install expires after 7 days: reinstall with
