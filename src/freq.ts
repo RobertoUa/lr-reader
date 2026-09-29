@@ -1,5 +1,6 @@
-// Word popularity from the 50,000 most frequent Spanish words in film subtitles (FrequencyWords by
-// Hermit Dave, OpenSubtitles 2018, CC BY-SA 4.0), one word per line in rank order.
+// Word popularity: the 50,000 most frequent Spanish words from wordfreq (Robyn Speer; Wikipedia, subtitles,
+// news, books, web; CC BY-SA 4.0), letters-only, one word per line in rank order. Blended sources rank
+// book vocabulary better than subtitles alone.
 let ranks: Promise<Map<string, number>> | null = null;
 let loadedMap: Map<string, number> | null = null;
 
