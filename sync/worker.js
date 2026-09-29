@@ -25,6 +25,8 @@ export default {
         if (Number(url.searchParams.get("base")) !== JSON.parse(cur).v) return send(cur, 409);
         const next = await req.json();
         next.v = (JSON.parse(cur).v || 0) + 1;
+        // The previous state stays one step back, so a bad sync can be undone by hand.
+        await env.KV.put("state:prev", cur);
         await env.KV.put("state", JSON.stringify(next));
         return send({ v: next.v });
       }

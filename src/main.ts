@@ -691,6 +691,8 @@ $("rec-max").addEventListener("change", (e) => (pref("recMax", (e.target as HTML
 
 async function openBook(id: string) {
   clearReturn();
+  // A sync started at launch may be bringing a newer reading position.
+  if (syncing) await Promise.race([syncing, new Promise((r) => setTimeout(r, 4000))]);
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
   if (!b || !m) return say("Book not found in storage.", true), false;
   book = b;
@@ -1897,11 +1899,11 @@ async function runSync() {
       const b = await getBook(m.id);
       if (b) await Sync.putBook(c, m.id, b), markUploaded(m.id);
     }
-    const base = (await cacheGet<Sync.Items>("sync|base")) || {};
+    const saved = await cacheGet<Sync.Items>("sync|base"), base = saved || {};
     let remote = await Sync.getState(c);
     for (let tries = 0; tries < 3; tries++) {
       const local = await localItems();
-      const next = Sync.merge3(base, local, remote.items || {});
+      const next = Sync.merge3(base, local, remote.items || {}, !saved);
       const skipped = await applyItems(next, local, c);
       const r = await Sync.putState(c, remote.v, next);
       if ("v" in r) {

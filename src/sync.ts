@@ -6,14 +6,14 @@ import type { Book } from "./epub";
 export type Items = Record<string, unknown>;
 export type Conn = { url: string; token: string };
 
-// Per item: unchanged on one side takes the other side; changed on both keeps the local value, except
-// that an edit beats a deletion.
-export function merge3(base: Items, local: Items, remote: Items): Items {
+// Per item: unchanged on one side takes the other side; changed on both keeps the local value (the remote
+// one when preferRemote, for a device's first sync), except that an edit beats a deletion.
+export function merge3(base: Items, local: Items, remote: Items, preferRemote = false): Items {
   const out: Items = {};
   const js = (x: unknown) => (x === undefined ? undefined : JSON.stringify(x));
   for (const k of new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)])) {
     const b = js(base[k]), l = js(local[k]), r = js(remote[k]);
-    const v = l === r || r === b ? local[k] : l === b ? remote[k] : local[k] ?? remote[k];
+    const v = l === r || r === b ? local[k] : l === b ? remote[k] : preferRemote ? remote[k] ?? local[k] : local[k] ?? remote[k];
     if (v !== undefined) out[k] = v;
   }
   return out;
