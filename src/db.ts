@@ -47,6 +47,7 @@ export async function deleteBook(id: string, lang: { sl: string; tl: string }) {
     book && delMany(book.chapters.flatMap((c) => c.blocks.flatMap((b) => b.sentences)).map((t) => trKey(t, lang)), cache),
     del(id, texts),
     del(id, metas),
+    del(`cover|${id}`, cache),
   ]);
 }
 

@@ -44,6 +44,7 @@ site, no backend. Spec: `PROMPT.md`. Current state and decisions: `STATUS.md`. M
 - `study.ts`: review scheduling, stats days, unknown-word density. `look.ts`: themes/fonts.
 - `mt.ts` + `mt.worker.ts`: offline es->en model (transformers.js) in a Web Worker; onnxruntime served
   from the app, never from a CDN. `freq.ts` + `public/freq-es.txt`: word frequency and a rough book difficulty (CC BY-SA, credited).
+- `covers.ts`: book covers (EPUB/FB2 embedded, else Apple Books search, else Open Library), shrunk to a JPEG data URL in `cover|<id>` (synced).
 - `tatoeba.ts`: example sentences (Tatoeba API, CC BY 2.0 FR, credited under the list).
 - `sync.ts` + `sync/worker.js`: sync with the owner's Cloudflare Worker (KV). Three-way merge of a flat
   item map against the last synced copy (`sync|base`); books uploaded once. Deploy: `cd sync && npx wrangler deploy`;

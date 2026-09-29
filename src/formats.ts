@@ -94,7 +94,10 @@ export function parseFb2(data: Uint8Array, name: string, lang = "es"): Book {
     chapters.push({ title: title || `Part ${chapters.length + 1}`, blocks });
   }
   const bookTitle = info?.querySelector("book-title")?.textContent?.trim();
-  return { title: bookTitle || baseName(name), author, chapters };
+  const href = info?.querySelector("coverpage image")?.getAttributeNS("http://www.w3.org/1999/xlink", "href") || info?.querySelector("coverpage image")?.getAttribute("l:href");
+  const bin = href && [...doc.getElementsByTagName("binary")].find((b) => b.getAttribute("id") === href.replace(/^#/, ""));
+  const cover = bin ? { type: bin.getAttribute("content-type") || "image/jpeg", data: Uint8Array.from(atob((bin.textContent || "").replace(/\s+/g, "")), (c) => c.charCodeAt(0)) } : undefined;
+  return { title: bookTitle || baseName(name), author, chapters, cover };
 }
 
 // MOBI (PalmDOC compression, the common case); HUFF/CDIC books need converting to EPUB first.

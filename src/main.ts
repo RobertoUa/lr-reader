@@ -13,6 +13,7 @@ import * as Freq from "./freq";
 import * as Tts from "./tts";
 import * as Tatoeba from "./tatoeba";
 import * as Sync from "./sync";
+import * as Covers from "./covers";
 import { SPEECH_VOICES, bookLevel, explain, speech, synonyms as aiSynonyms } from "./aitr";
 import bookmarkletSrc from "./bookmarklet.js?raw";
 import { chapterSentences, prepareBook, type Progress } from "./prepare";
@@ -403,7 +404,23 @@ function bookCard(m: Meta) {
   levelOf(m).then((l) => {
     if (l?.cefr || l?.label) card.querySelector(".level")!.textContent = ` \u00b7 ${l.cefr || l.label}`;
   }, () => {});
+  coverOf(m).then((u) => u && (card.querySelector<HTMLElement>(".cover")!.style.backgroundImage = `url("${u}")`, card.querySelector(".cover")!.classList.add("img")));
   return card;
+}
+
+// The file's own cover, else one found online; a miss is remembered for a week.
+const coverRuns = new Map<string, Promise<string | null>>();
+async function coverOf(m: Meta): Promise<string | null> {
+  const k = `cover|${m.id}`, have = await cacheGet<string>(k);
+  if (have?.startsWith("data:")) return have;
+  if (!navigator.onLine || (have && Date.now() - Number(have.slice(5)) < 7 * 864e5)) return null;
+  if (!coverRuns.has(m.id))
+    coverRuns.set(m.id, Covers.find(m.title, m.author, settings().sl)
+      .then((url) => (url ? Covers.shrink(url) : null))
+      .catch(() => null)
+      .then(async (u) => (await cacheSet(k, u || `none|${Date.now()}`), u))
+      .finally(() => coverRuns.delete(m.id)));
+  return coverRuns.get(m.id)!;
 }
 
 const bookPanel = $("book-panel");
@@ -564,7 +581,10 @@ file.addEventListener("change", async () => {
       : /\.txt$/.test(n) || f.type === "text/plain" ? Formats.parseTxt(data, f.name, sl)
       : parseEpub(data, sl);
     if (!book.chapters.length) throw new Error("no readable text found");
+    const cover = book.cover;
+    delete book.cover;
     const m = await addBook(book);
+    if (cover) await Covers.shrink(new Blob([cover.data as BlobPart], { type: cover.type })).then((u) => cacheSet(`cover|${m.id}`, u), () => {});
     say(`Imported "${m.title}": ${book.chapters.length} chapters, ${m.sentences} sentences.`);
     showLibrary();
   } catch (e) {
@@ -1801,7 +1821,7 @@ $("review-close").addEventListener("click", () => {
 // ---- Sync (Cloudflare Worker in sync/) ----
 
 const SYNC_URL = "https://lr-reader-sync.robertoua.workers.dev";
-const SYNC_PREFIXES = ["wl|", "stats|", "looks|", "sum|", "sumlast|"];
+const SYNC_PREFIXES = ["wl|", "stats|", "looks|", "sum|", "sumlast|", "cover|"];
 const syncConn = (): Sync.Conn | null => (pref("syncToken") ? { url: pref("syncUrl") || SYNC_URL, token: pref("syncToken")! } : null);
 ($("sync-url") as HTMLInputElement).value = pref("syncUrl") || "";
 ($("sync-token") as HTMLInputElement).value = pref("syncToken") || "";
@@ -1944,7 +1964,7 @@ async function buildBackup(status: HTMLElement) {
   const unreadable: string[] = [];
   const books = (await Promise.all(metas.map(async (m) => ({ meta: m, book: await getBook(m.id).catch(() => void unreadable.push(m.title)) })))).filter((b) => b.book);
   leftOut = unreadable.length ? ` Could not read: ${unreadable.join(", ")}.` : "";
-  const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "looks|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
+  const cacheEntries = (await Promise.all(["wl|", "sum|", "sumlast|", "stats|", "keys|", "looks|", "cover|", "outbox"].map((p) => getCacheByPrefix(p)))).flat();
   const s: Record<string, unknown> = { ...settings() };
   if (!($("backup-secrets") as HTMLInputElement).checked) for (const k of SECRET) delete s[k];
   const data = { app: "lr-reader", version: 1, exportedAt: new Date().toISOString(), settings: s, look: pref("look"), goal: pref("goal"), books, cache: cacheEntries };

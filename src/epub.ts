@@ -3,7 +3,7 @@ import { sentences } from "./split";
 
 export type Block = { tag: "p" | "h" | "q" | "li"; sentences: string[] };
 export type Chapter = { title: string; blocks: Block[] };
-export type Book = { title: string; author: string; chapters: Chapter[] };
+export type Book = { title: string; author: string; chapters: Chapter[]; cover?: { type: string; data: Uint8Array } };
 
 const BLOCKS = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "li", "dd", "dt", "pre", "td", "figcaption", "section", "article"]);
 const SKIP = new Set(["script", "style", "head", "nav", "rt", "rp"]);
@@ -105,5 +105,10 @@ export function parseEpub(data: Uint8Array, lang = "es"): Book {
   if (!kept.length) throw new Error("No readable text in this EPUB");
 
   const meta = (tag: string) => opf.getElementsByTagNameNS("http://purl.org/dc/elements/1.1/", tag)[0]?.textContent?.trim() || "";
-  return { title: meta("title") || "Untitled", author: meta("creator"), chapters: kept };
+  // EPUB 3 marks the cover image with properties="cover-image"; EPUB 2 names it in <meta name="cover">.
+  const coverId = opf.querySelector('meta[name="cover"]')?.getAttribute("content");
+  const coverItem = [...opf.querySelectorAll("manifest > item")].find((i) => (i.getAttribute("properties") || "").split(" ").includes("cover-image") || (coverId && i.getAttribute("id") === coverId));
+  const coverPath = coverItem && resolve(opfPath, coverItem.getAttribute("href")!);
+  const cover = coverPath && files[coverPath] && /^image\//.test(coverItem!.getAttribute("media-type") || "") ? { type: coverItem!.getAttribute("media-type")!, data: files[coverPath] } : undefined;
+  return { title: meta("title") || "Untitled", author: meta("creator"), chapters: kept, cover: cover || undefined };
 }
