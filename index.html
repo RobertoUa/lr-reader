@@ -18,24 +18,25 @@
 </head>
 <body>
 <main id="lib">
-  <header class="bar">
-    <h1>LR Reader</h1>
-    <button id="open-words">Words</button>
-    <button id="open-settings" aria-label="Settings">Settings</button>
-    <label class="btn">Import<input id="file" type="file" hidden></label>
+  <header class="topbar">
+    <button id="open-words" class="icon labeled" aria-label="Words"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 3h10a3 3 0 0 1 3 3v10"/></svg><span>Words</span></button>
+    <span class="spacer"></span>
+    <button id="open-settings" class="icon" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
+    <label class="icon primary" aria-label="Import a book"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><input id="file" type="file" hidden></label>
   </header>
+  <h1 class="large">Library</h1>
   <p id="status" role="status"></p>
-  <p id="goal-line" class="sub"></p>
-  <button id="backup-nudge" hidden>No backup this week. Save one to iCloud Drive</button>
-  <ul id="books"></ul>
+  <div id="goal-line" class="card goal"></div>
+  <button id="backup-nudge" class="card nudge" hidden>No backup this week. Save one to iCloud Drive</button>
+  <div id="books"></div>
 </main>
 <section id="reader" hidden>
   <header class="bar">
-    <button id="back" aria-label="Library">&lsaquo;</button>
+    <button id="back" class="icon" aria-label="Library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
     <select id="toc" aria-label="Chapter"></select>
-    <button id="menu" aria-label="Menu">&#9776;</button>
-    <button id="summary" aria-label="Summary">AI</button>
-    <button id="look" aria-label="Themes and settings">Aa</button>
+    <button id="menu" class="icon" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <button id="summary" class="icon" aria-label="AI summary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></button>
+    <button id="look" class="icon text" aria-label="Themes and text">Aa</button>
   </header>
   <div id="viewport"><article id="content"></article></div>
   <button id="return" hidden>&lsaquo; Back to where you were</button>
@@ -52,20 +53,22 @@
   <div id="summary-out"></div>
 </div>
 <div id="menu-panel" class="panel" hidden>
-  <div class="look-row"><button id="search">Search</button><button id="bookmarks">Bookmarks</button><button data-menu="finished" id="finished-toggle">Mark as finished</button><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
+  <div class="tiles"><button id="search">Search</button><button id="bookmarks">Bookmarks</button><button data-menu="finished" id="finished-toggle">Mark as finished</button><button data-menu="words">Words in this book</button><button data-menu="read">Read aloud</button>
     <button data-menu="stats">Stats</button><button data-menu="review">Review</button></div>
   <div id="menu-out"></div>
 </div>
 <section id="words" hidden>
-  <header class="bar"><button id="words-close" aria-label="Close">&lsaquo;</button><h1>Words</h1><button id="open-review">Review</button></header>
-  <div class="look-row words-filter"><button data-wf="LEARNING" class="on">Learning</button><button data-wf="KNOWN">Known</button>
+  <header class="topbar"><button id="words-close" class="icon" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><span class="spacer"></span><button id="open-review" class="pill">Review</button></header>
+  <h1 class="large">Words</h1>
+  <div class="words-filter"><div class="seg"><button data-wf="LEARNING" class="on">Learning</button><button data-wf="KNOWN">Known</button></div>
     <input id="words-search" type="search" placeholder="Search" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
   <div id="words-list"></div>
 </section>
 <section id="review" hidden>
-  <header class="bar"><button id="review-close" aria-label="Close">&lsaquo;</button><h1>Review</h1><span id="review-left" class="sub"></span></header>
+  <header class="topbar"><button id="review-close" class="icon" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><h1>Review</h1><span id="review-left" class="sub"></span></header>
   <div id="review-card"></div>
 </section>
+<div id="book-panel" class="panel" hidden></div>
 <div id="bookmarks-panel" class="panel" hidden>
   <button id="bookmark-toggle"></button>
   <div id="bookmark-list"></div>
@@ -85,9 +88,10 @@
     <div class="row"><button value="cancel">Cancel</button><button value="go">Prepare</button></div>
   </form>
 </dialog>
-<dialog id="settings">
+<dialog id="settings" class="full">
   <form method="dialog">
-    <h2>Settings</h2>
+    <header class="dlg-head"><button value="cancel" class="plain">Cancel</button><h2>Settings</h2><button value="save" class="plain strong">Save</button></header>
+    <section class="group"><h3>Language Reactor</h3>
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:8px"><button type="button" id="paste-login">Paste Language Reactor login</button><button type="button" id="copy-bookmarklet">Copy bookmarklet</button></div>
     <details class="sub" style="margin-bottom:12px"><summary>How to get the token on iPhone</summary>
       <ol>
@@ -101,45 +105,58 @@
     </details>
     <label>Language Reactor email<input name="email" type="email" autocomplete="off"></label>
     <label>Token (diocoToken)<input name="token" type="password" autocomplete="off"></label>
+    </section>
+    <section class="group"><h3>Languages and translation</h3>
     <div class="row">
       <label>Book language<input name="sl" size="4"></label>
       <label>My language<input name="tl" size="4"></label>
     </div>
-    <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
     <label>Translations from<select name="trSource"><option value="lr">Language Reactor</option><option value="openai">ChatGPT (OpenAI API key)</option><option value="claude">Claude (Claude API key)</option></select></label>
     <div class="row"><label>ChatGPT model for translations<select name="trModelOpenai"></select></label><label>Claude model for translations<select name="trModelClaude"></select></label></div>
     <p class="sub">Language Reactor is still used for your account: saved words, highlighting, saving words and phrases.</p>
+    <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
+    </section>
+    <section class="group"><h3>AI keys and models</h3>
     <label>Claude API key (stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
     <label>Claude model<select name="claudeModel"></select></label>
     <label>OpenAI API key (stays on this device)<input name="openaiKey" type="password" autocomplete="off"></label>
     <label>ChatGPT model<select name="openaiModel"></select></label>
-    <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="clear-translations">Clear translation cache</button></div>
-    <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
-    <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>
-    <p id="mt-status" class="sub"></p>
-    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Save backup</button>
-      <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
-    <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
-    <label>Sync server<input id="sync-url" type="url" placeholder="https://lr-reader-sync.robertoua.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <label>Sync token<input id="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <div class="row" style="justify-content:flex-start"><button type="button" id="sync-now">Sync now</button></div>
-    <p id="sync-state" class="sub">Books, positions, bookmarks, words, stats, summaries and settings (not API keys) sync on start, when you leave the app and every few minutes in the library.</p>
-    <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
+    </section>
+    <section class="group"><h3>Reading</h3>
     <label class="check"><input id="hl-known" type="checkbox"> Underline known words (green)</label>
     <div class="row"><label class="check"><input id="hl-rec" type="checkbox"> Underline recommended words (blue): common words you have not marked</label>
       <select id="rec-max" aria-label="Recommended from the most common"><option value="1000">top 1000</option><option value="2000">top 2000</option><option value="3000">top 3000</option><option value="5000">top 5000</option><option value="10000">top 10000</option></select></div>
     <label>Daily reading goal<select id="goal"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
+    </section>
+    <section class="group"><h3>Voice</h3>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>
       <button id="test-voice" type="button">Test voice</button>
     </div>
     <label class="check"><input name="autoSay" type="checkbox"> Say the word when I tap it</label>
-    <p class="sub">More Spanish voices: iOS Settings &gt; Accessibility &gt; Spoken Content &gt; Voices &gt; Spanish (Enhanced and Premium sound best).</p>
-    <p class="sub">Word frequency: FrequencyWords by Hermit Dave (OpenSubtitles 2018), CC BY-SA 4.0.</p>
+    </section>
+    <section class="group"><h3>Sync</h3>
+    <label>Sync server<input id="sync-url" type="url" placeholder="https://lr-reader-sync.robertoua.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>Sync token<input id="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="row" style="justify-content:flex-start"><button type="button" id="sync-now">Sync now</button></div>
+    <p id="sync-state" class="sub">Books, positions, bookmarks, words, stats, summaries and settings (not API keys) sync on start, when you leave the app and every few minutes in the library.</p>
+    </section>
+    <section class="group"><h3>Backup</h3>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Save backup</button>
+      <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
+    <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
+    <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
+    </section>
+    <section class="group"><h3>Storage and offline</h3>
+    <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="clear-translations">Clear translation cache</button></div>
+    <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
+    <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>
+    <p id="mt-status" class="sub"></p>
     <p id="storage" class="sub"></p>
     <p id="sync-detail" class="sub"></p>
-    <div class="row"><button value="cancel">Cancel</button><button value="save">Save</button></div>
+    <p class="sub">Word frequency: FrequencyWords by Hermit Dave (OpenSubtitles 2018), CC BY-SA 4.0.</p>
+    </section>
   </form>
 </dialog>
 <script type="module" src="/src/main.ts"></script>

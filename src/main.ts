@@ -369,33 +369,63 @@ async function showLibrary() {
   closeSheet();
   reader.hidden = true;
   lib.hidden = false;
-  // Finished books go last, under their own heading.
-  const list = (await listBooks()).sort((a, b) => Number(!!a.finished) - Number(!!b.finished));
-  books.innerHTML = list.length ? "" : `<li class="sub">No books yet. Tap Import to add an EPUB, PDF, MOBI, FB2 or TXT file.</li>`;
+  const list = await listBooks();
   showGoal();
   $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
-  for (const m of list) {
-    if (m.finished && m === list.find((x) => x.finished)) books.insertAdjacentHTML("beforeend", `<li class="group">Finished</li>`);
-    const li = document.createElement("li");
-    li.innerHTML = `<button class="open"><div class="title">${esc(m.title)}</div>
-      <div class="sub">${esc(m.author)}${m.author ? " &middot; " : ""}${m.finished ? "finished" : `read ${pct(m.done, m.sentences)}%`} &middot; prepared ${m.prepared}%<span class="level"></span></div>
-      <div class="sub prep"></div></button>
-      <button class="prep-btn">${preparing?.id === m.id ? "Pause" : "Prepare"}</button>
-      <button class="del" aria-label="Delete">Delete</button>`;
-    li.querySelector(".prep-btn")!.addEventListener("click", () => (preparing?.id === m.id ? preparing.ctl.abort() : askPrepare(m.id)));
-    if (preparing?.id === m.id) preparing.line = li.querySelector(".prep") as HTMLElement;
-    li.querySelector(".open")!.addEventListener("click", () => openBook(m.id));
-    levelOf(m).then((l) => {
-      if (l?.cefr || l?.label) li.querySelector(".level")!.textContent = ` \u00b7 ${l.cefr ? `${l.cefr}: ${l.why}` : `${l.label} (${l.common}% common words)`}`;
-    }, () => {});
-    li.querySelector(".del")!.addEventListener("click", async () => {
+  if (!list.length) return void (books.innerHTML = `<div class="empty"><b>No books yet</b><span>Tap + to import an EPUB, PDF, MOBI, FB2 or TXT file.</span></div>`);
+  books.innerHTML = "";
+  for (const [title, shelf] of [["Reading", list.filter((m) => !m.finished)], ["Finished", list.filter((m) => m.finished)]] as const) {
+    if (!shelf.length) continue;
+    books.insertAdjacentHTML("beforeend", `<h2 class="shelf-title">${title}</h2>`);
+    const grid = document.createElement("div");
+    grid.className = "shelf";
+    for (const m of shelf) grid.append(bookCard(m));
+    books.append(grid);
+  }
+}
+
+// A generated cover: the title on a gradient whose hue comes from the title.
+const hueOf = (t: string) => ([...t].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) * 137) % 360;
+function bookCard(m: Meta) {
+  const card = document.createElement("div");
+  card.className = "book";
+  const read = m.finished ? 100 : pct(m.done, m.sentences);
+  card.innerHTML = `<button class="cover" style="--h:${hueOf(m.title)}"><span class="ct">${esc(m.title)}</span><span class="ca">${esc(m.author)}</span></button>
+    <div class="info"><div class="bt">${esc(m.title)}</div><button class="more icon" aria-label="Book actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div>
+    <div class="progress"><i style="width:${read}%"></i></div>
+    <div class="sub">${m.finished ? "Finished" : `${read}%`}${m.prepared ? ` \u00b7 ${m.prepared}% offline` : ""}<span class="level"></span></div>
+    <div class="sub prep"></div>`;
+  card.querySelector(".cover")!.addEventListener("click", () => openBook(m.id));
+  card.querySelector(".more")!.addEventListener("click", () => bookActions(m));
+  if (preparing?.id === m.id) preparing.line = card.querySelector(".prep") as HTMLElement;
+  levelOf(m).then((l) => {
+    if (l?.cefr || l?.label) card.querySelector(".level")!.textContent = ` \u00b7 ${l.cefr || l.label}`;
+  }, () => {});
+  return card;
+}
+
+const bookPanel = $("book-panel");
+function bookActions(m: Meta) {
+  closeSheet();
+  const l = m.level;
+  bookPanel.innerHTML = `<div class="sheet-title"><b>${esc(m.title)}</b><span class="sub">${esc(m.author)}${l?.cefr ? ` \u00b7 ${esc(l.cefr)}: ${esc(l.why || "")}` : l?.label ? ` \u00b7 ${esc(l.label)} (${l.common}% common words)` : ""}</span></div>
+    <div class="list"><button data-b="open">Open</button><button data-b="prep">${preparing?.id === m.id ? "Pause preparing" : "Prepare for offline"}</button>
+    <button data-b="fin">${m.finished ? "Mark as not finished" : "Mark as finished"}</button><button data-b="del" class="danger">Delete</button></div>`;
+  bookPanel.hidden = false;
+  bookPanel.onclick = async (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLElement>("[data-b]")?.dataset.b;
+    if (!a) return;
+    bookPanel.hidden = true;
+    if (a === "open") return void openBook(m.id);
+    if (a === "prep") return preparing?.id === m.id ? preparing.ctl.abort() : askPrepare(m.id);
+    if (a === "fin") await putMeta({ ...((await getMeta(m.id)) || m), finished: m.finished ? undefined : Date.now() });
+    if (a === "del") {
       if (!confirm(`Delete "${m.title}" and all its data?`)) return;
       if (preparing?.id === m.id) preparing.ctl.abort();
       await deleteBook(m.id, lang());
-      showLibrary();
-    });
-    books.append(li);
-  }
+    }
+    showLibrary();
+  };
 }
 
 // Worked out once per book and kept with it: an AI rating from sample passages when a key is set,
@@ -1477,7 +1507,9 @@ $("goal").addEventListener("change", () => (pref("goal", ($("goal") as HTMLSelec
 async function showGoal() {
   const days = new Map((await getCacheByPrefix<Study.Day>("stats|")).map(([k, d]) => [k.slice(6), d.ms]));
   const today = Math.floor((days.get(Study.dayKey()) || 0) / 60000), n = Study.streak((d) => days.get(d) || 0, goalMin() * 60000);
-  $("goal-line").textContent = `Today ${today} of ${goalMin()} min${today >= goalMin() ? " - goal met" : ""} \u00b7 ${n}-day streak`;
+  const g = goalMin();
+  $("goal-line").innerHTML = `<div class="goal-top"><b>Today</b><span>${today} of ${g} min${today >= g ? " \u2713" : ""}</span></div>
+    <div class="progress"><i style="width:${Math.min(100, (100 * today) / g)}%"></i></div><div class="sub">${n ? `${n}-day streak` : "Read today to start a streak"}</div>`;
 }
 
 // Reading time counts the gap between page turns when it is under two minutes.
