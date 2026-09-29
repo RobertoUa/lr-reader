@@ -369,7 +369,7 @@ async function showLibrary() {
   closeSheet();
   reader.hidden = true;
   lib.hidden = false;
-  const list = await listBooks();
+  const list = (await listBooks()).sort((a, b) => (b.opened || b.added) - (a.opened || a.added));
   showGoal();
   $("backup-nudge").hidden = !list.length || Date.now() - Number(pref("lastBackup") || 0) < BACKUP_EVERY;
   if (!list.length) return void (books.innerHTML = `<div class="empty"><b>No books yet</b><span>Tap + to import an EPUB, PDF, MOBI, FB2 or TXT file.</span></div>`);
@@ -389,10 +389,12 @@ const hueOf = (t: string) => ([...t].reduce((h, c) => (h * 31 + c.charCodeAt(0))
 function bookCard(m: Meta) {
   const card = document.createElement("div");
   card.className = "book";
-  const read = m.finished ? 100 : pct(m.done, m.sentences);
+  // One decimal below 10%, so early progress in a long book does not read as 0%.
+  const exact = m.finished ? 100 : m.sentences ? (100 * m.done) / m.sentences : 0;
+  const read = exact < 10 ? Math.floor(exact * 10) / 10 : Math.floor(exact);
   card.innerHTML = `<button class="cover" style="--h:${hueOf(m.title)}"><span class="ct">${esc(m.title)}</span><span class="ca">${esc(m.author)}</span></button>
     <div class="info"><div class="bt">${esc(m.title)}</div><button class="more icon" aria-label="Book actions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button></div>
-    <div class="progress"><i style="width:${read}%"></i></div>
+    <div class="progress"><i style="width:${exact}%"></i></div>
     <div class="sub">${m.finished ? "Finished" : `${read}%`}${m.prepared ? ` \u00b7 ${m.prepared}% offline` : ""}<span class="level"></span></div>
     <div class="sub prep"></div>`;
   card.querySelector(".cover")!.addEventListener("click", () => openBook(m.id));
@@ -624,12 +626,17 @@ function lemmaFor(w: HTMLElement): { lemma: string; token?: lr.Token; index: num
 
 // Dictionary forms of a sentence's words, worked out once per translation (mark() runs on every tap).
 const lemmaCache = new WeakMap<lr.Translated, string[]>();
+const posCache = new WeakMap<lr.Translated, string[]>();
 function sentenceLemmas(si: number, ws: HTMLElement[]): string[] {
   const tr = trs[si];
   const forms = () => ws.map((w) => w.textContent!.toLowerCase());
   if (!tr) return forms();
   let l = lemmaCache.get(tr);
-  if (!l) lemmaCache.set(tr, (l = ws.map((w) => lemmaFor(w).lemma)));
+  if (!l) {
+    const info = ws.map((w) => lemmaFor(w));
+    lemmaCache.set(tr, (l = info.map((x) => x.lemma)));
+    posCache.set(tr, info.map((x) => x.token?.pos || ""));
+  }
   return l.length === ws.length ? l : forms();
 }
 
@@ -642,12 +649,15 @@ function mark() {
   if (rec && !Freq.ready()) Freq.preload().then(mark, () => {});
   spans.forEach((span, si) => {
     const ws = [...span.children] as HTMLElement[];
-    const lemmas = sentenceLemmas(si, ws);
+    const lemmas = sentenceLemmas(si, ws), tr = trs[si], pos = tr && posCache.get(tr);
     ws.forEach((w, k) => {
-      const form = w.textContent!.toLowerCase(), stage = stageOf(lemmas[k], form, sl);
+      const text = w.textContent!, form = text.toLowerCase();
+      const stage = stageOf(lemmas[k], form, sl) ?? (lemmas[k] !== form ? stageOf(form, form, sl) : undefined);
       w.classList.toggle("learning", stage === "LEARNING");
       w.classList.toggle("known", h.known && stage === "KNOWN");
-      const r = rec && !stage ? Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity) : Infinity;
+      // Only once the sentence is translated (its dictionary forms decide what is known), and never names.
+      const name = pos?.[k] === "PROPN" || (k > 0 && text[0] !== form[0]);
+      const r = rec && !stage && tr && !name ? Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity) : Infinity;
       w.classList.toggle("rec", r <= h.recMax && form.length > 1 && !/\d/.test(form));
     });
   });
@@ -664,7 +674,8 @@ async function openBook(id: string) {
   const [b, m] = await Promise.all([getBook(id), getMeta(id)]);
   if (!b || !m) return say("Book not found in storage.", true), false;
   book = b;
-  meta = m;
+  meta = { ...m, opened: Date.now() };
+  putMeta(meta);
   offsets = [];
   let n = 0;
   for (const c of book.chapters) {

@@ -17,6 +17,7 @@ export type Meta = {
   bookmarks?: Bookmark[];
   level?: Level;
   finished?: number;
+  opened?: number;
 };
 export type Bookmark = { ch: number; s: number; text: string; at: number };
 
