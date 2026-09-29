@@ -91,7 +91,8 @@
 <dialog id="settings" class="full">
   <form method="dialog">
     <header class="dlg-head"><button value="cancel" class="plain">Cancel</button><h2>Settings</h2><button value="save" class="plain strong">Save</button></header>
-    <section class="group"><h3>Language Reactor</h3>
+    <nav class="tabs"><button type="button" data-tab="account">Account</button><button type="button" data-tab="translation">Translation</button><button type="button" data-tab="reading">Reading</button><button type="button" data-tab="voice">Voice</button><button type="button" data-tab="sync">Sync</button><button type="button" data-tab="storage">Storage</button></nav>
+    <section class="group" data-tab="account"><h3>Language Reactor</h3>
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:8px"><button type="button" id="paste-login">Paste Language Reactor login</button><button type="button" id="copy-bookmarklet">Copy bookmarklet</button></div>
     <details class="sub" style="margin-bottom:12px"><summary>How to get the token on iPhone</summary>
       <ol>
@@ -106,7 +107,7 @@
     <label>Language Reactor email<input name="email" type="email" autocomplete="off"></label>
     <label>Token (diocoToken)<input name="token" type="password" autocomplete="off"></label>
     </section>
-    <section class="group"><h3>Languages and translation</h3>
+    <section class="group" data-tab="translation"><h3>Languages and translation</h3>
     <div class="row">
       <label>Book language<input name="sl" size="4"></label>
       <label>My language<input name="tl" size="4"></label>
@@ -116,21 +117,21 @@
     <p class="sub">Language Reactor is still used for your account: saved words, highlighting, saving words and phrases.</p>
     <label>Requests per second while preparing<input name="rate" inputmode="decimal"></label>
     </section>
-    <section class="group"><h3>AI keys and models</h3>
+    <section class="group" data-tab="translation"><h3>AI keys and models</h3>
     <label>Claude API key (stays on this device)<input name="claudeKey" type="password" autocomplete="off"></label>
     <label>Claude model<select name="claudeModel"></select></label>
     <label>OpenAI API key (stays on this device)<input name="openaiKey" type="password" autocomplete="off"></label>
     <label>ChatGPT model<select name="openaiModel"></select></label>
     </section>
-    <section class="group"><h3>Reading</h3>
+    <section class="group" data-tab="reading"><h3>Reading</h3>
     <label class="check"><input id="hl-known" type="checkbox"> Underline known words (green)</label>
-    <div class="row"><label class="check"><input id="hl-rec" type="checkbox"> Underline recommended words (blue): common words you have not marked</label>
-      <select id="rec-max" aria-label="Recommended from the most common"><option value="1000">top 1000</option><option value="2000">top 2000</option><option value="3000">top 3000</option><option value="5000">top 5000</option><option value="10000">top 10000</option></select></div>
+    <label class="check"><input id="hl-rec" type="checkbox"> Underline recommended words (blue)</label>
+    <label>Recommended: unmarked words within the most common<select id="rec-max"><option value="1000">top 1000</option><option value="2000">top 2000</option><option value="3000">top 3000</option><option value="5000">top 5000</option><option value="10000">top 10000</option></select></label>
     <label>Treat the most common words as known<select id="auto-known"><option value="0">Off</option><option value="500">Top 500</option><option value="1000">Top 1000</option><option value="2000">Top 2000</option><option value="3000">Top 3000</option></select></label>
     <p class="sub">Language Reactor counts very common words as known without saving them. Words you marked still win.</p>
     <label>Daily reading goal<select id="goal"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
     </section>
-    <section class="group"><h3>Voice</h3>
+    <section class="group" data-tab="voice"><h3>Voice</h3>
     <label>Voice<select name="voice"></select></label>
     <div class="row">
       <label>Speech speed<select name="speechRate"><option value="0.6">0.6x</option><option value="0.8">0.8x</option><option value="1">1x</option><option value="1.2">1.2x</option></select></label>
@@ -138,19 +139,19 @@
     </div>
     <label class="check"><input name="autoSay" type="checkbox"> Say the word when I tap it</label>
     </section>
-    <section class="group"><h3>Sync</h3>
+    <section class="group" data-tab="sync"><h3>Sync</h3>
     <label>Sync server<input id="sync-url" type="url" placeholder="https://lr-reader-sync.robertoua.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
     <label>Sync token<input id="sync-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
     <div class="row" style="justify-content:flex-start"><button type="button" id="sync-now">Sync now</button></div>
     <p id="sync-state" class="sub">Books, positions, bookmarks, words, stats, summaries and settings (not API keys) sync on start, when you leave the app and every few minutes in the library.</p>
     </section>
-    <section class="group"><h3>Backup</h3>
+    <section class="group" data-tab="sync"><h3>Backup</h3>
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap;margin-bottom:4px"><button type="button" id="backup-export">Save backup</button>
       <label class="btn" style="margin:0">Import backup<input id="backup-import" type="file" accept=".json,application/json" hidden></label></div>
     <label class="check"><input id="backup-secrets" type="checkbox"> Include API keys and the Language Reactor token in the export</label>
     <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
     </section>
-    <section class="group"><h3>Storage and offline</h3>
+    <section class="group" data-tab="storage"><h3>Storage and offline</h3>
     <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="clear-translations">Clear translation cache</button></div>
     <p id="clear-status" class="sub">Removes cached translations and word lookups (they are fetched again when needed). Summaries, saved words and pending marks stay.</p>
     <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:4px"><button type="button" id="mt-download">Download offline English translation</button></div>

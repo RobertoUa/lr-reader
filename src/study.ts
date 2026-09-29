@@ -53,3 +53,25 @@ export function density(lemmas: string[], stageOf: (lemma: string) => string | u
   for (const l of set) if (!stageOf(l)) unknown++;
   return { distinct: set.size, unknown, pct: set.size ? Math.round((100 * unknown) / set.size) : 0 };
 }
+
+// Regular Spanish verb endings (present, preterite, imperfect, future, conditional, subjunctive, participles,
+// gerunds). Language Reactor lists often hold a known conjugated form ("levanto") but not the infinitive.
+const AR = "o|as|a|amos|ais|an|e|aste|asteis|aron|aba|abas|abamos|abais|aban|are|aras|ara|aremos|areis|aran|aria|arias|ariamos|ariais|arian|es|emos|eis|en|aramos|ase|ases|asemos|aseis|asen|ado|ada|ados|adas|ando|ar";
+const ERIR = "o|es|e|emos|imos|eis|is|en|i|iste|io|isteis|ieron|ia|ias|iamos|iais|ian|ere|eras|era|eremos|ereis|eran|eria|erias|eriamos|eriais|erian|ire|iras|ira|iremos|ireis|iran|iria|irias|iriamos|iriais|irian|a|as|amos|ais|an|iera|ieras|ieramos|ierais|ieran|iese|ieses|iesemos|ieseis|iesen|ido|ida|idos|idas|iendo|er|ir";
+const plain = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "");
+const endings = { ar: new RegExp(`^(${AR})$`), e: new RegExp(`^(${ERIR})$`) };
+
+// True when a word in `known` (sorted, accents removed) is a regular form of the verb `lemma`.
+export function verbFamilyKnown(lemma: string, known: string[]): boolean {
+  const m = /^(.{3,}?)(ar|er|ir)(se)?$/.exec(plain(lemma));
+  if (!m) return false;
+  const [, stem, kind] = m, re = kind === "ar" ? endings.ar : endings.e;
+  let lo = 0, hi = known.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (known[mid] < stem) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let i = lo; i < known.length && known[i].startsWith(stem); i++) if (re.test(known[i].slice(stem.length))) return true;
+  return false;
+}

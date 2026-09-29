@@ -45,6 +45,15 @@ const settings = (): Settings => {
   }
   return settingsVal;
 };
+function showTab(tab: string) {
+  pref("settingsTab", tab);
+  settingsDlg.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) =>
+    el.localName === "button" ? el.classList.toggle("on", el.dataset.tab === tab) : (el.hidden = el.dataset.tab !== tab));
+}
+document.querySelector("#settings .tabs")!.addEventListener("click", (e) => {
+  const t = (e.target as HTMLElement).closest<HTMLElement>("[data-tab]")?.dataset.tab;
+  if (t) showTab(t);
+});
 const lang = (): lr.Lang => ({ sl: settings().sl, tl: settings().tl });
 // Translations and dictionary data: Language Reactor, or ChatGPT/Claude with the user's key.
 function source(): S.Source {
@@ -205,6 +214,7 @@ $("open-settings").addEventListener("click", async () => {
   const persisted = await navigator.storage?.persisted?.();
   $("storage").textContent = est ? `Storage: ${((est.usage || 0) / 1e6).toFixed(1)} MB used of ${((est.quota || 0) / 1e6).toFixed(0)} MB${persisted ? ", persistent" : ", not persistent"}.` : "";
   renderSync();
+  showTab(pref("settingsTab") || "account");
   settingsDlg.showModal();
 });
 settingsDlg.addEventListener("close", () => {
@@ -660,6 +670,20 @@ function sentenceLemmas(si: number, ws: HTMLElement[]): string[] {
   return l.length === ws.length ? l : forms();
 }
 
+// Known words from the synced list without accents, sorted, rebuilt when the list changes.
+let famFor: object | null = null, famList: string[] = [];
+const famCache = new Map<string, boolean>();
+function familyKnown(lemma: string): boolean {
+  if (famFor !== synced) {
+    famFor = synced;
+    famList = Object.keys(synced).filter((w) => synced[w] === "KNOWN").map((w) => w.normalize("NFD").replace(/\p{M}/gu, "")).sort();
+    famCache.clear();
+  }
+  let v = famCache.get(lemma);
+  if (v === undefined) famCache.set(lemma, (v = Study.verbFamilyKnown(lemma, famList)));
+  return v;
+}
+
 // Learning is always shown; known and recommended (common unmarked words) only when switched on.
 const hl = () => ({ known: pref("hlKnown") === "1", rec: pref("hlRec") === "1", recMax: Number(pref("recMax")) || 3000, autoKnown: Number(pref("autoKnown") ?? 1000) });
 function mark() {
@@ -674,7 +698,8 @@ function mark() {
       const text = w.textContent!, form = text.toLowerCase();
       const marked = stageOf(lemmas[k], form, sl) ?? (lemmas[k] !== form ? stageOf(form, form, sl) : undefined);
       const rank = Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity);
-      const stage = marked ?? (rank <= h.autoKnown ? "KNOWN" : undefined);
+      const verb = pos?.[k] === "VERB" || pos?.[k] === "AUX";
+      const stage = marked ?? (rank <= h.autoKnown || (verb && familyKnown(lemmas[k])) ? "KNOWN" : undefined);
       w.classList.toggle("learning", stage === "LEARNING");
       w.classList.toggle("known", h.known && stage === "KNOWN");
       // Only once the sentence is translated (its dictionary forms decide what is known), and never names.

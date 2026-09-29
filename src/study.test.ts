@@ -41,3 +41,13 @@ test("streak counts goal days in a row, today's open goal does not break it", ()
   expect(streak((d) => ms[d] || 0, 20, now)).toBe(3);
   expect(streak(() => 0, 20, now)).toBe(0);
 });
+
+test("a known conjugated form makes its verb known, unrelated words do not", async () => {
+  const { verbFamilyKnown } = await import("./study");
+  const known = ["cantidad", "levanto", "perro"].sort();
+  expect(verbFamilyKnown("levantar", known)).toBe(true);
+  expect(verbFamilyKnown("levantarse", known)).toBe(true);
+  expect(verbFamilyKnown("cantar", known)).toBe(false);
+  expect(verbFamilyKnown("perro", known)).toBe(false);
+  expect(verbFamilyKnown("vivir", ["vivieron"])).toBe(true);
+});

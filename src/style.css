@@ -130,6 +130,10 @@ dialog.full { width: 100%; max-width: 640px; height: 100%; max-height: 100%; mar
 .dlg-head h2 { flex: 1; margin: 0; text-align: center; font-size: 17px; }
 .plain { background: none; color: var(--accent); font-weight: 400; }
 .plain.strong { font-weight: 600; }
+.tabs { position: sticky; top: calc(env(safe-area-inset-top) + 50px); z-index: 1; display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 14px; padding: 6px 16px 8px; background: var(--bg); scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: none; min-height: 34px; padding: 0 14px; border-radius: 17px; font-size: 15px; background: var(--card); color: var(--fg); }
+.tabs button.on { background: var(--accent); color: #fff; }
 .group { background: var(--card); border-radius: var(--radius); padding: 14px 14px 4px; margin: 0 0 18px; }
 .group h3 { margin: -2px 0 12px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .group button { background: var(--bg); }
