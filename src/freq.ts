@@ -1,6 +1,12 @@
 // Word popularity from the 50,000 most frequent Spanish words in film subtitles (FrequencyWords by
 // Hermit Dave, OpenSubtitles 2018, CC BY-SA 4.0), one word per line in rank order.
 let ranks: Promise<Map<string, number>> | null = null;
+let loadedMap: Map<string, number> | null = null;
+
+// Synchronous rank for mark(), once the list has loaded; undefined for rare words or before loading.
+export const rankNow = (w: string) => loadedMap?.get(w);
+export const ready = () => loadedMap !== null;
+export const preload = () => load().then((m) => void (loadedMap = m));
 
 export const supported = (sl: string) => sl === "es";
 

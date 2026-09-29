@@ -125,6 +125,9 @@
     <div class="row" style="justify-content:flex-start"><button type="button" id="sync-now">Sync now</button></div>
     <p id="sync-state" class="sub">Books, positions, bookmarks, words, stats, summaries and settings (not API keys) sync on start, when you leave the app and every few minutes in the library.</p>
     <p id="backup-status" class="sub">On iPhone: Save backup, then Save to Files &gt; iCloud Drive (the same name replaces the old one). Books, positions, bookmarks, word lists, summaries, stats, settings and pending marks. Translations are not included (they are fetched again).</p>
+    <label class="check"><input id="hl-known" type="checkbox"> Underline known words (green)</label>
+    <div class="row"><label class="check"><input id="hl-rec" type="checkbox"> Underline recommended words (blue): common words you have not marked</label>
+      <select id="rec-max" aria-label="Recommended from the most common"><option value="1000">top 1000</option><option value="2000">top 2000</option><option value="3000">top 3000</option><option value="5000">top 5000</option><option value="10000">top 10000</option></select></div>
     <label>Daily reading goal<select id="goal"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
     <label>Voice<select name="voice"></select></label>
     <div class="row">

@@ -56,6 +56,8 @@ button, .btn, select { font: inherit; font-size: 16px; color: var(--fg); backgro
 #sync.error { color: #d33; }
 .w { border-radius: 4px; }
 .w.learning { background: rgba(255, 140, 0, 0.33); }
+.w.known { box-shadow: inset 0 -2px 0 rgba(60, 170, 90, 0.6); }
+.w.rec { box-shadow: inset 0 -2px 0 rgba(80, 150, 255, 0.8); }
 .w.on, .w.sel { background: rgba(80, 150, 255, 0.4); }
 
 #sheet, .panel { position: fixed; left: 0; right: 0; bottom: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; z-index: 5;

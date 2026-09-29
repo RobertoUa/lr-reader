@@ -56,7 +56,7 @@ phrases. Verified: Language Reactor accepts saved words whose context tokens wer
 - Word sheet: translation, dictionary form, part of speech, sentence translation, More, Play, Play
   sentence, Examples (5 Tatoeba sentences with human translations, cached per word), Search in book (5 sentences from the book with the same form or dictionary form).
 - Phrases: long-press and drag, translation, Save phrase, Play.
-- Highlighting of LEARNING words by dictionary form.
+- Highlighting of LEARNING words by dictionary form; optional underlines for KNOWN (green) and recommended words (blue: unmarked words in the top N by frequency, Settings).
 - Marks and phrases through an IndexedDB outbox: offline drafts completed at sync time, undo while
   queued or in flight, bound to the account they were made for, merge by entry id.
 - Prepare for offline: chapter range and presets, pause/resume, rate-paced (default 4 req/s, pool of

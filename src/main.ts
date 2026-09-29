@@ -603,15 +603,31 @@ function sentenceLemmas(si: number, ws: HTMLElement[]): string[] {
   return l.length === ws.length ? l : forms();
 }
 
+// Learning is always shown; known and recommended (common unmarked words) only when switched on.
+const hl = () => ({ known: pref("hlKnown") === "1", rec: pref("hlRec") === "1", recMax: Number(pref("recMax")) || 3000 });
 function mark() {
   if (reader.hidden) return;
-  const sl = settings().sl;
+  const sl = settings().sl, h = hl();
+  const rec = h.rec && Freq.supported(sl);
+  if (rec && !Freq.ready()) Freq.preload().then(mark, () => {});
   spans.forEach((span, si) => {
     const ws = [...span.children] as HTMLElement[];
     const lemmas = sentenceLemmas(si, ws);
-    ws.forEach((w, k) => w.classList.toggle("learning", stageOf(lemmas[k], w.textContent!.toLowerCase(), sl) === "LEARNING"));
+    ws.forEach((w, k) => {
+      const form = w.textContent!.toLowerCase(), stage = stageOf(lemmas[k], form, sl);
+      w.classList.toggle("learning", stage === "LEARNING");
+      w.classList.toggle("known", h.known && stage === "KNOWN");
+      const r = rec && !stage ? Math.min(Freq.rankNow(form) ?? Infinity, Freq.rankNow(lemmas[k]) ?? Infinity) : Infinity;
+      w.classList.toggle("rec", r <= h.recMax && form.length > 1 && !/\d/.test(form));
+    });
   });
 }
+for (const [id, key] of [["hl-known", "hlKnown"], ["hl-rec", "hlRec"]] as const) {
+  ($(id) as HTMLInputElement).checked = pref(key) === "1";
+  $(id).addEventListener("change", (e) => (pref(key, (e.target as HTMLInputElement).checked ? "1" : "0"), mark()));
+}
+($("rec-max") as HTMLSelectElement).value = String(hl().recMax);
+$("rec-max").addEventListener("change", (e) => (pref("recMax", (e.target as HTMLSelectElement).value), mark()));
 
 async function openBook(id: string) {
   clearReturn();
